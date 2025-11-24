@@ -6,6 +6,10 @@ let isGameActive = false; let currentCoin = "不明";
 let gameStartTime = 0; let timerInterval = null; let lastResultTime = 0;
 let logData = []; let filteredData = []; let deckList = [];
 let sessionStartTime = 0;
+let pipWindowRef = null;
+
+// レイアウト設定
+let pipLayoutMode = localStorage.getItem('md_pip_layout') || 'portrait';
 
 window.onload = () => {
     if (window.location.hash === "#compact") document.body.classList.add("compact-mode");
@@ -18,23 +22,38 @@ window.onload = () => {
     if (GAS_URL) loadData(); renderSavedFilters();
 };
 
-// --- PiP機能 ---
-// ★重要: 外部ウィンドウから要素を探すヘルパー関数
 function getUI(id) {
     let el = document.getElementById(id);
-    if (!el && window.documentPictureInPicture && window.documentPictureInPicture.window) {
-        el = window.documentPictureInPicture.window.document.getElementById(id);
+    if (!el && pipWindowRef && pipWindowRef.document) {
+        el = pipWindowRef.document.getElementById(id);
     }
     return el;
 }
 
+// --- PiP機能 ---
 async function togglePiP() {
     if (!('documentPictureInPicture' in window)) return alert("非対応ブラウザです");
-    if (window.documentPictureInPicture.window) { window.documentPictureInPicture.window.close(); return; }
+    if (pipWindowRef) { pipWindowRef.close(); return; }
 
     try {
-        const pipWin = await documentPictureInPicture.requestWindow({ width: 300, height: 650 });
-        // CSSをコピー
+        // 初期サイズ設定 (横長は170px, 縦長は650px)
+        const width = pipLayoutMode === 'landscape' ? 1150 : 320;
+        const height = pipLayoutMode === 'landscape' ? 170 : 650;
+
+        const pipWin = await documentPictureInPicture.requestWindow({ width: width, height: height });
+        pipWindowRef = pipWin;
+
+        pipWin.document.body.style.backgroundColor = "#181818";
+        pipWin.document.body.style.color = "#e0e0e0";
+
+        // 初期クラス設定
+        if (pipLayoutMode === 'landscape') {
+            pipWin.document.body.classList.add('landscape');
+        } else {
+            pipWin.document.body.classList.remove('landscape');
+        }
+
+        // CSSコピー
         [...document.styleSheets].forEach(styleSheet => {
             try {
                 const css = [...styleSheet.cssRules].map(r => r.cssText).join('');
@@ -44,33 +63,86 @@ async function togglePiP() {
             } catch (e) { }
         });
 
+        const links = document.querySelectorAll('link[rel="stylesheet"]');
+        links.forEach(link => {
+            const newLink = document.createElement('link');
+            newLink.rel = 'stylesheet';
+            newLink.href = link.href;
+            pipWin.document.head.appendChild(newLink);
+        });
+
+        // コンテンツ移動
         const pipContent = document.getElementById('pipContent');
-        pipContent.style.display = "block";
+        pipContent.style.display = "flex";
         pipWin.document.body.appendChild(pipContent);
 
-        // 操作パネルを移動
         const controls = document.getElementById('portableControls');
         pipContent.querySelector('#pipControlsTarget').appendChild(controls);
 
+        // イベントリスナー設定
+        const btnLayout = pipWin.document.getElementById('btnToggleLayout');
+        if (btnLayout) btnLayout.onclick = toggleLayout;
+
+        document.getElementById('pipPlaceholder').style.display = "block";
+
         pipWin.addEventListener("pagehide", () => {
-            // 元に戻す
             const parent = document.getElementById("mainControlCol");
-            const logDiv = document.getElementById('logs');
-            if (parent && controls) parent.insertBefore(controls, logDiv);
+            const placeholder = document.getElementById('pipPlaceholder');
+            if (parent && controls) parent.insertBefore(controls, placeholder);
 
             document.body.appendChild(pipContent);
             pipContent.style.display = "none";
+            placeholder.style.display = "none";
+            pipWindowRef = null;
         });
     } catch (e) { alert("PiPエラー: " + e); }
 }
 
+// ★ここが修正ポイント：縦に戻す際の位置補正を追加
+function toggleLayout() {
+    if (!pipWindowRef) return;
+
+    if (pipLayoutMode === 'portrait') {
+        // → 横長へ変更 (Landscape)
+        pipLayoutMode = 'landscape';
+        pipWindowRef.resizeTo(1150, 170); // 薄くする
+        pipWindowRef.document.body.classList.add('landscape');
+    } else {
+        // → 縦長へ変更 (Portrait)
+        pipLayoutMode = 'portrait';
+
+        // 画面からはみ出さないように位置調整
+        try {
+            const currentY = pipWindowRef.screenY;
+            const targetHeight = 650;
+            const screenH = pipWindowRef.screen.availHeight;
+
+            // 下にはみ出る場合、上に持ち上げる
+            if (currentY + targetHeight > screenH) {
+                // 余裕を持って少し上(マージン20px)に配置
+                const newY = Math.max(0, screenH - targetHeight - 50);
+                pipWindowRef.moveTo(pipWindowRef.screenX, newY);
+            }
+        } catch (e) {
+            console.log("位置補正スキップ", e);
+        }
+
+        // 少し待ってからリサイズ (挙動安定のため)
+        setTimeout(() => {
+            pipWindowRef.resizeTo(320, 650);
+            pipWindowRef.document.body.classList.remove('landscape');
+        }, 10);
+    }
+    localStorage.setItem('md_pip_layout', pipLayoutMode);
+}
+
 function closePiP() {
-    if (window.documentPictureInPicture.window) {
-        window.documentPictureInPicture.window.close();
+    if (pipWindowRef) {
+        pipWindowRef.close();
     }
 }
 
-// --- 共通 ---
+// --- 共通ユーティリティ ---
 function showToast(msg) { const t = document.getElementById("toast"); t.innerText = msg; t.className = "show"; setTimeout(function () { t.className = t.className.replace("show", ""); }, 3000); }
 function parseDuration(val) {
     if (val === undefined || val === null || val === "") return 0;
@@ -108,6 +180,7 @@ function loadData() {
     script.src = `${GAS_URL}?callback=${cbName}&nocache=${Date.now()}`;
     document.body.appendChild(script);
 }
+
 function updateSelectors() {
     const ids = ['myDeckSelect', 'oppDeckSelect', 'editMyDeck', 'editOppDeck'];
     ids.forEach(id => {
@@ -143,7 +216,6 @@ function renderHome() {
 
     if (document.getElementById('db_winRate')) { document.getElementById('db_winRate').innerText = winRate; document.getElementById('db_totalMatches').innerText = total + "戦"; document.getElementById('db_coinRate').innerText = coinRate; document.getElementById('db_avgTime').innerText = avgTime; }
 
-    // PiP更新 (getUI使用)
     const pipT = getUI('pip_total');
     if (pipT) { pipT.innerText = total; getUI('pip_win').innerText = winRate; getUI('pip_coin_r').innerText = coinRate; }
 
@@ -284,7 +356,6 @@ async function loop() {
     } catch (e) { console.error(e); } finally { isProcessing = false; setTimeout(loop, 300); }
 }
 function analyze(t) {
-    // ロジック復元 (厳格版)
     if (!isGameActive) {
         if ((t.includes("相手") || t.includes("対戦")) && t.includes("選択")) setCoin("裏", "後攻", "コイン裏");
         else if (t.includes("選択") || t.includes("先攻") || t.includes("後攻")) setCoin("表", "先攻", "コイン表");
@@ -295,7 +366,6 @@ function analyze(t) {
     if (isGameActive) {
         if (Date.now() - lastResultTime < 10000) return;
         if (t.includes("CLOSE")) return;
-        // 誤検知対策ワード追加
         if (t.includes("VICTORY") || t.includes("VICTDRY") || t.includes("VICT0RY") || t.includes("VIGTORY") || t.includes("VlCTORY") || t.includes("勝利")) finish("WIN", t);
         else if (t.includes("LOSE") || t.includes("L0SE") || t.includes("LDSE") || t.includes("DEFEAT") || t.includes("敗北")) finish("LOSE", t);
     }
@@ -303,7 +373,6 @@ function analyze(t) {
 function setCoin(c, tr, r) {
     if (currentCoin !== c) {
         currentCoin = c;
-        // ★修正: getUIを使ってセット
         const tE = getUI('turnOrder'); if (tE && tE.value === "Unknown") tE.value = tr;
         log(r, "important"); manualStart();
     }
@@ -312,7 +381,6 @@ function manualStart() { if (!isGameActive) { isGameActive = true; gameStartTime
 function finish(r, w) {
     lastResultTime = Date.now(); const sec = Math.floor((lastResultTime - gameStartTime) / 1000); log(`決着:${r}`, "important");
 
-    // ★修正: getUIを使って値を取得
     const myD = getUI('myDeckSelect') ? getUI('myDeckSelect').value : "";
     const oppD = getUI('oppDeckSelect') ? getUI('oppDeckSelect').value : "";
     const turn = getUI('turnOrder') ? getUI('turnOrder').value : "";
