@@ -8,6 +8,13 @@ body {
     transition: 0.3s;
 }
 
+/* PiPウィンドウでは余白を消す */
+@media (display-mode: picture-in-picture) {
+    body {
+        padding: 0;
+    }
+}
+
 .tabs {
     display: flex;
     border-bottom: 2px solid #333;

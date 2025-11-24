@@ -1,268 +1,406 @@
-<!DOCTYPE html>
-<html lang="ja">
+let GAS_URL = localStorage.getItem('md_tracker_url') || "";
+if(GAS_URL) document.getElementById('gasUrlInput').value = GAS_URL;
 
-<head>
-    <meta charset="UTF-8">
-    <title>MD Tracker v3.9.3</title>
-    <script src='https://cdn.jsdelivr.net/npm/tesseract.js@4/dist/tesseract.min.js'></script>
-    <link rel="stylesheet" href="style.css">
-</head>
+let worker = null; let stream = null; let isProcessing = false;
+let isGameActive = false; let currentCoin = "不明";
+let gameStartTime = 0; let timerInterval = null; let lastResultTime = 0;
+let logData = []; let filteredData = []; let deckList = [];
+let sessionStartTime = 0;
+// PiPウィンドウの参照を保持
+let pipWindowRef = null;
 
-<body>
+window.onload = () => {
+if(window.location.hash === "#compact") document.body.classList.add("compact-mode");
+window.addEventListener('storage', (e) => {
+if(e.key === 'md_refresh_signal') loadData();
+if(e.key === 'md_session_start') { sessionStartTime = parseInt(e.newValue); renderHome(); }
+});
+const savedSession = localStorage.getItem('md_session_start');
+if(savedSession) sessionStartTime = parseInt(savedSession);
+if(GAS_URL) loadData(); renderSavedFilters();
+};
 
-    <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <h1 style="margin:0; font-size: 1.5em;">MD Tracker v3.9.3</h1>
-        <div style="font-size: 0.8em;">
-            GAS URL: <input type="text" id="gasUrlInput" placeholder="https://script.google..."
-                style="width: 200px; padding: 5px;">
-            <button onclick="saveUrl()" class="secondary" style="width:auto;">保存</button>
-        </div>
-    </header>
+// --- PiP機能 (デザイン崩れ修正版) ---
+function getUI(id) {
+let el = document.getElementById(id);
+if (!el && pipWindowRef) {
+el = pipWindowRef.document.getElementById(id);
+}
+return el;
+}
 
-    <div class="tabs">
-        <div class="tab active" onclick="changeTab('home')">🏠 ホーム</div>
-        <div class="tab" onclick="changeTab('monitor')">📺 映像モニタ</div>
-        <div class="tab" onclick="changeTab('history')">📝 履歴 (最新100)</div>
-        <div class="tab" onclick="changeTab('analyze')">📊 分析</div>
-    </div>
+async function togglePiP() {
+if (!('documentPictureInPicture' in window)) return alert("非対応ブラウザです");
+if (pipWindowRef) { pipWindowRef.close(); return; }
 
-    <div id="home" class="page active">
-        <div id="compactStatus">
-            <span id="cp_state" style="color:#aaa;">待機中</span>
-            <span id="cp_coin">Coin: -</span>
-            <span id="cp_time">0s</span>
-        </div>
-        <div id="compactStatsGrid">
-            <div class="mini-stat"><span class="mini-val" id="cp_total">0</span><span class="mini-lbl">試合</span></div>
-            <div class="mini-stat"><span class="mini-val" id="cp_win">0%</span><span class="mini-lbl">勝率</span></div>
-            <div class="mini-stat"><span class="mini-val" id="cp_coin_r">0%</span><span class="mini-lbl">表率</span></div>
-        </div>
+try {
+// ミニ窓を開く
+const pipWin = await documentPictureInPicture.requestWindow({ width: 320, height: 600 });
+pipWindowRef = pipWin;
 
-        <div class="status-bar">
-            <div style="font-weight:bold; font-size:1.1em;">システム状態</div>
-            <div style="display:flex; gap:10px;">
-                <div class="status-badge" id="stateBadge">待機中</div>
-                <div class="status-badge">コイン: <span id="coinVal">---</span></div>
-                <div class="status-badge">時間: <span id="timeVal">0s</span></div>
-            </div>
-        </div>
+// ★修正: CSSファイルをリンクとして読み込む (これでスタイルが崩れない)
+const link = document.createElement('link');
+link.rel = 'stylesheet';
+link.href = 'style.css';
+pipWin.document.head.appendChild(link);
 
-        <div class="home-grid">
-            <div class="col" id="mainControlCol">
-                <h3>🎮 コントロールパネル</h3>
-                <button class="primary" id="btnStartSystem" onclick="startSystem()">🚀 監視システム起動</button>
-                <div style="display:flex; gap:5px; margin-bottom:15px;">
-                    <button class="secondary" onclick="togglePiP()">📱 縦型ミニ窓</button>
-                    <button class="secondary" onclick="resetSession()" style="background:#2c3e50;">⏱️ ここから集計</button>
-                </div>
+// コンテンツ移動
+const pipContent = document.getElementById('pipContent');
+pipContent.style.display = "block";
+pipWin.document.body.appendChild(pipContent);
 
-                <div id="portableControls">
-                    <h4>設定</h4>
-                    <select id="matchType">
-                        <option value="ランクマッチ">ランクマッチ</option>
-                        <option value="レート">レート</option>
-                        <option value="DC & WCS">DC & WCS</option>
-                        <option value="その他">その他</option>
-                    </select>
-                    <label>自分デッキ</label><select id="myDeckSelect" onchange="checkNewDeck(this)">
-                        <option value="">読み込み中...</option>
-                    </select>
-                    <label>相手デッキ</label><select id="oppDeckSelect" onchange="checkNewDeck(this)">
-                        <option value="">(不明)</option>
-                    </select>
-                    <label>手番</label><select id="turnOrder">
-                        <option value="Unknown">自動判定</option>
-                        <option value="First">先攻</option>
-                        <option value="Second">後攻</option>
-                    </select>
+const controls = document.getElementById('portableControls');
+pipContent.querySelector('#pipControlsTarget').appendChild(controls);
 
-                    <h4>手動操作</h4>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-                        <button class="secondary" onclick="manualStart()">試合開始</button>
-                        <button class="secondary" onclick="resetGame()">リセット</button>
-                        <button class="danger" onclick="finish('WIN', '手動')">強制：勝</button>
-                        <button class="danger" style="background:#555;" onclick="finish('LOSE', '手動')">強制：負</button>
-                    </div>
-                </div>
-                <div id="logs">ログ待機中...</div>
-            </div>
+// 本体側にプレースホルダーを表示
+document.getElementById('pipPlaceholder').style.display = "block";
 
-            <div>
-                <div class="dashboard-stats">
-                    <div class="big-stat-card"><span class="big-stat-lbl" id="lbl_winRate">勝率 (全期間)</span><span
-                            class="big-stat-val" id="db_winRate" style="color:#4caf50;">--%</span></div>
-                    <div class="big-stat-card"><span class="big-stat-lbl">試合数</span><span class="big-stat-val"
-                            id="db_totalMatches">--</span></div>
-                    <div class="big-stat-card"><span class="big-stat-lbl">コイン表率</span><span class="big-stat-val"
-                            id="db_coinRate">--%</span></div>
-                    <div class="big-stat-card"><span class="big-stat-lbl">平均時間</span><span class="big-stat-val"
-                            id="db_avgTime">--</span></div>
-                </div>
-                <div class="col" style="border:none; background:#252525; padding:0;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h3 style="margin:0; border:none;">🕒 直近10戦</h3>
-                        <button class="secondary" onclick="loadData()" style="width:auto; font-size:0.8em;">更新</button>
-                    </div>
-                    <table id="recentTable">
-                        <thead>
-                            <tr>
-                                <th>デッキ</th>
-                                <th>相手</th>
-                                <th>手番</th>
-                                <th>時間</th>
-                                <th>勝敗</th>
-                                <th>操作</th>
-                            </tr>
-                        </thead>
-                        <tbody></tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
+// 閉じた時の処理
+pipWin.addEventListener("pagehide", () => {
+const parent = document.getElementById("mainControlCol");
+const placeholder = document.getElementById('pipPlaceholder');
 
-    <div id="monitor" class="page">
-        <div class="container">
-            <div class="col" style="flex: 1.2;">
-                <h3>映像プレビュー</h3>
-                <div id="videoContainer"><video id="video" autoplay playsinline muted></video>
-                    <div id="cropGuide"></div>
-                </div>
-                <div style="margin-top:5px; color:#aaa; font-size:0.8em;">AIの視界</div>
-                <canvas id="displayCanvas"></canvas>
-            </div>
-            <div class="col">
-                <h3>認識ステータス</h3>
-                <div id="monitorMode">---</div>
-            </div>
-        </div>
-    </div>
+// 操作パネルを戻す (プレースホルダーの前に挿入)
+if (parent && controls) parent.insertBefore(controls, placeholder);
 
-    <div id="history" class="page">
-        <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="margin:0; border:none; color:#fff;">最新100件</h3>
-            <div><span id="historyMsg" style="color:#aaa; margin-right:10px;"></span><button class="secondary"
-                    onclick="loadData()" style="width: auto;">🔄 更新</button></div>
-        </div>
-        <div class="col" style="overflow-x:auto; padding:0;">
-            <table id="historyTable">
-                <thead>
-                    <tr>
-                        <th>日時</th>
-                        <th>種別</th>
-                        <th>デッキ</th>
-                        <th>相手</th>
-                        <th>先後</th>
-                        <th>時間</th>
-                        <th>勝敗</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-        </div>
-    </div>
+document.body.appendChild(pipContent);
+pipContent.style.display = "none";
+placeholder.style.display = "none"; // プレースホルダーを消す
+pipWindowRef = null;
+});
+} catch(e) { alert("PiPエラー: " + e); }
+}
 
-    <div id="analyze" class="page">
-        <div class="filter-bar">
-            <h3 style="border:none;">📊 詳細分析フィルター</h3>
-            <div class="filter-row">
-                <div class="filter-btn" onclick="setFilterTime('1h')">1時間</div>
-                <div class="filter-btn" onclick="setFilterTime('24h')">24時間</div>
-                <div class="filter-btn" onclick="setFilterTime('week')">今週</div>
-                <div class="filter-btn" onclick="setFilterTime('month')">今月</div>
-                <div class="filter-btn active" onclick="setFilterTime('all')">全期間</div>
-            </div>
-            <div class="filter-row">
-                <label style="margin:0 10px 0 0;">種別:</label>
-                <select id="filterMatchType" onchange="applyFilter()" style="width:auto; margin:0;">
-                    <option value="all">すべて</option>
-                    <option value="ランクマッチ">ランクマッチ</option>
-                    <option value="レート">レート</option>
-                    <option value="DC & WCS">DC & WCS</option>
-                    <option value="その他">その他</option>
-                </select>
-            </div>
-            <div class="filter-row" style="border-top:1px solid #444; padding-top:10px; margin-top:10px;">
-                <input type="datetime-local" id="dateStart" style="width:auto;"> ～ <input type="datetime-local"
-                    id="dateEnd" style="width:auto;">
-                <button class="secondary" onclick="setFilterTime('custom')" style="width:auto;">適用</button>
-                <button class="secondary" onclick="saveFilter()" style="width:auto; margin-left:auto;">★ 条件保存</button>
-            </div>
-            <div id="savedFilters"></div>
-        </div>
-        <div class="dashboard-stats">
-            <div class="big-stat-card"><span class="big-stat-val" id="st_total">0</span><span
-                    class="big-stat-lbl">該当試合数</span></div>
-            <div class="big-stat-card"><span class="big-stat-val" id="st_winRate">0%</span><span
-                    class="big-stat-lbl">勝率</span></div>
-            <div class="big-stat-card"><span class="big-stat-val" id="st_coin">0%</span><span
-                    class="big-stat-lbl">コイン表率</span></div>
-            <div class="big-stat-card"><span class="big-stat-val" id="st_avgTime">0:00</span><span
-                    class="big-stat-lbl">平均時間</span></div>
-        </div>
-        <div class="container">
-            <div class="col">
-                <h3>使用デッキ別</h3>
-                <table id="tableMyDeck"></table>
-            </div>
-            <div class="col">
-                <h3>対戦相手別</h3>
-                <table id="tableOppDeck"></table>
-            </div>
-        </div>
-    </div>
+function closePiP() {
+if (pipWindowRef) {
+pipWindowRef.close();
+}
+}
 
-    <div id="pipContent">
-        <div class="mini-status-row">
-            <span id="pip_state" class="mini-badge" style="color:#aaa;">待機中</span>
-            <span id="pip_coin" class="mini-badge">Coin: -</span>
-            <span id="pip_time" class="mini-badge">0s</span>
-        </div>
-        <div class="mini-stats">
-            <div class="mini-stat-box"><span class="mini-val" id="pip_total">0</span><span class="mini-lbl">試合</span>
-            </div>
-            <div class="mini-stat-box"><span class="mini-val" id="pip_win" style="color:#4caf50;">0%</span><span
-                    class="mini-lbl">勝率</span></div>
-            <div class="mini-stat-box"><span class="mini-val" id="pip_coin_r">0%</span><span class="mini-lbl">表率</span>
-            </div>
-        </div>
-        <div id="pipControlsTarget"></div>
-        <div style="margin-top:15px;">
-            <button class="secondary" onclick="closePiP()">画面を戻す</button>
-        </div>
-    </div>
+// --- 共通関数 ---
+function showToast(msg) { const t = document.getElementById("toast"); t.innerText = msg; t.className = "show";
+setTimeout(function(){ t.className = t.className.replace("show", ""); }, 3000); }
+function parseDuration(val) {
+if (val === undefined || val === null || val === "") return 0;
+if (typeof val === 'number') return val;
+if (typeof val === 'string') {
+if (!isNaN(Number(val))) return Number(val);
+const m = val.match(/(\d+)分(\d+)秒/);
+if (m) return parseInt(m[1])*60 + parseInt(m[2]);
+} return 0;
+}
+function formatSeconds(sec) { const m = Math.floor(sec/60); const s = sec % 60; return
+`${m}分${String(s).padStart(2,'0')}秒`; }
+function toTimeStr(val) { const sec = parseDuration(val); return sec>0 ? formatSeconds(sec) : "-"; }
 
-    <div id="editModal" class="modal">
-        <div class="modal-content">
-            <h3>記録の編集</h3>
-            <input type="hidden" id="editId">
-            <label>種別</label><select id="editMatchType">
-                <option value="ランクマッチ">ランクマッチ</option>
-                <option value="レート">レート</option>
-                <option value="DC & WCS">DC & WCS</option>
-                <option value="その他">その他</option>
-            </select>
-            <label>デッキ</label><select id="editMyDeck"></select>
-            <label>相手</label><select id="editOppDeck"></select>
-            <label>手番</label><select id="editTurn">
-                <option value="先攻">先攻</option>
-                <option value="後攻">後攻</option>
-            </select>
-            <label>勝敗</label><select id="editResult">
-                <option value="WIN">WIN</option>
-                <option value="LOSE">LOSE</option>
-            </select>
-            <div style="display:flex; gap:10px; margin-top:20px;">
-                <button class="primary" onclick="submitEdit()">保存</button>
-                <button class="secondary" onclick="closeModal()">キャンセル</button>
-            </div>
-        </div>
-    </div>
+function resetSession() { const now = Date.now(); localStorage.setItem('md_session_start', now); sessionStartTime = now;
+showToast("ここからの成績を集計します"); renderHome(); }
+function saveUrl() { localStorage.setItem('md_tracker_url', document.getElementById('gasUrlInput').value);
+showToast("保存しました"); loadData(); }
+function changeTab(id) {
+document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+document.getElementById(id).classList.add('active');
+document.querySelector(`.tab[onclick="changeTab('${id}')"]`).classList.add('active');
+if(id!=='record' && id!=='monitor') loadData();
+}
 
-    <div id="toast"></div>
+// --- データロード ---
+function loadData() {
+if(!GAS_URL) return;
+const cbName = 'cb_'+Date.now();
+window[cbName] = (data) => {
+logData = data.logs || []; deckList = data.decks || [];
+updateSelectors();
+if(!document.body.classList.contains("compact-mode")) { renderHome(); renderHistory(); applyFilter(); } else {
+renderHome(); }
+delete window[cbName]; document.body.removeChild(document.getElementById(cbName));
+};
+const script = document.createElement('script');
+script.src = `${GAS_URL}?callback=${cbName}&nocache=${Date.now()}`;
+document.body.appendChild(script);
+}
 
-    <script src="script.js"></script>
-</body>
+function updateSelectors() {
+const ids = ['myDeckSelect','oppDeckSelect','editMyDeck','editOppDeck'];
+ids.forEach(id => {
+const el = id.startsWith('edit') ? document.getElementById(id) : getUI(id);
+if(!el) return;
+const current = el.value; el.innerHTML = `<option value="">(選択なし)</option>`;
+deckList.forEach(d => el.innerHTML += `<option value="${d}">${d}</option>`);
+if(id.includes('Select')) el.innerHTML += `<option value="__NEW__" style="color:#4da3ff;">＋ 新規追加...</option>`;
+if(current && deckList.includes(current)) el.value = current;
+});
+const last = localStorage.getItem('md_last_deck');
+const myDeckSel = getUI('myDeckSelect');
+if(last && deckList.includes(last) && myDeckSel && !myDeckSel.value) myDeckSel.value = last;
+}
 
-</html>
+// --- ホーム画面 ---
+function renderHome() {
+const sessionData = sessionStartTime > 0 ? logData.filter(d => new Date(d.date).getTime() >= sessionStartTime) :
+logData;
+const labelText = sessionStartTime > 0 ? "勝率 (セッション)" : "勝率 (全期間)";
+if(document.getElementById('lbl_winRate')) document.getElementById('lbl_winRate').innerText = labelText;
+
+const total = sessionData.length;
+let wins=0, coins=0, totalSec=0, countSec=0;
+if(total > 0) {
+sessionData.forEach(d => {
+const r = d.result || ""; if(r.includes("WIN")) wins++; if((d.coin||"").includes("表")) coins++;
+const sec = parseDuration(d.duration); if(sec > 0) { totalSec += sec; countSec++; }
+});
+}
+const winRate = total>0 ? Math.round((wins/total)*100)+"%" : "--%";
+const coinRate = total>0 ? Math.round((coins/total)*100)+"%" : "--%";
+const avgTime = countSec>0 ? formatSeconds(Math.floor(totalSec/countSec)) : "-";
+
+if(document.getElementById('db_winRate')) { document.getElementById('db_winRate').innerText = winRate;
+document.getElementById('db_totalMatches').innerText = total + "戦"; document.getElementById('db_coinRate').innerText =
+coinRate; document.getElementById('db_avgTime').innerText = avgTime; }
+
+const pipT = getUI('pip_total');
+if(pipT) { pipT.innerText = total; getUI('pip_win').innerText = winRate; getUI('pip_coin_r').innerText = coinRate; }
+
+if(document.getElementById('recentTable')) {
+const recent = logData.slice(0, 10);
+const tbody = document.querySelector("#recentTable tbody"); tbody.innerHTML = "";
+recent.forEach(row => {
+const tr = document.createElement("tr");
+const res = row.result || "-"; const resClass = res.includes("WIN") ? "win" : "lose"; const timeStr =
+toTimeStr(row.duration);
+tr.innerHTML = `<td>${row.myDeck}</td>
+<td>${row.oppDeck||"-"}</td>
+<td>${row.turn}</td>
+<td>${timeStr}</td>
+<td class="${resClass}">${res}</td>
+<td><button onclick="editLog(${row.id})" style="padding:2px 6px; font-size:0.8em;">編集</button> <button
+        onclick="deleteLog(${row.id})" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
+tbody.appendChild(tr);
+});
+}
+}
+
+// --- 履歴 ---
+function renderHistory() {
+const tbody = document.querySelector("#historyTable tbody"); tbody.innerHTML = "";
+logData.slice(0, 100).forEach(row => {
+const tr = document.createElement("tr");
+let dateStr = "---"; try { const d = new Date(row.date); if(!isNaN(d.getTime())) dateStr =
+`${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`; } catch(e){}
+const res = row.result || "-"; const resClass = res.includes("WIN") ? "win" : "lose"; const timeStr =
+toTimeStr(row.duration);
+tr.innerHTML = `<td>${dateStr}</td>
+<td>${row.type||"-"}</td>
+<td>${row.myDeck}</td>
+<td>${row.oppDeck||"-"}</td>
+<td>${row.turn}</td>
+<td>${timeStr}</td>
+<td class="${resClass}">${res}</td>
+<td><button onclick="editLog(${row.id})" style="padding:2px 6px; font-size:0.8em;">編集</button> <button
+        onclick="deleteLog(${row.id})" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
+tbody.appendChild(tr);
+});
+}
+
+// --- 分析 ---
+let currentTimeFilter = 'all';
+function setFilterTime(type) { currentTimeFilter = type; document.querySelectorAll('.filter-btn').forEach(b =>
+b.classList.remove('active')); if(type!=='custom') event.target.classList.add('active'); applyFilter(); }
+function applyFilter() {
+const now = new Date(); const matchType = document.getElementById('filterMatchType').value;
+filteredData = logData.filter(row => {
+if(matchType !== 'all' && row.type !== matchType) return false;
+const d = new Date(row.date); if(isNaN(d.getTime())) return false;
+const diffMs = now - d;
+if (currentTimeFilter === '1h') return diffMs <= 3600000; if (currentTimeFilter==='24h' ) return diffMs <=86400000; if
+    (currentTimeFilter==='week' ) { const dN=now.getDay()||7; const m=new Date(now); m.setHours(0,0,0,0);
+    m.setDate(now.getDate()-dN+1); return d>= m; }
+    if (currentTimeFilter === 'month') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    if (currentTimeFilter === 'custom') { const s = document.getElementById('dateStart').value ? new
+    Date(document.getElementById('dateStart').value) : null; const e = document.getElementById('dateEnd').value ? new
+    Date(document.getElementById('dateEnd').value) : null; if(s && d < s) return false; if(e && d> e) return false;
+        return true; }
+        return true;
+        });
+        renderStats();
+        }
+        function renderStats() {
+        const total = filteredData.length;
+        if(total===0) { document.getElementById('st_total').innerText="0";
+        document.getElementById('st_winRate').innerText="0%"; document.getElementById('st_avgTime').innerText="-";
+        document.getElementById('tableMyDeck').innerHTML=""; document.getElementById('tableOppDeck').innerHTML="";
+        return; }
+        let wins=0, coins=0, totalSec=0, countSec=0; const myStats={}, oppStats={};
+        filteredData.forEach(d => {
+        const isWin = (d.result||"").includes("WIN"); if(isWin) wins++; if((d.coin||"").includes("表")) coins++;
+        const sec = parseDuration(d.duration); if(sec > 0) { totalSec += sec; countSec++; }
+        const updateStat = (obj, key, win, time) => { if(!obj[key]) obj[key] = {t:0, w:0, timeSum:0, timeCnt:0};
+        obj[key].t++; if(win) obj[key].w++; if(time>0) { obj[key].timeSum += time; obj[key].timeCnt++; } };
+        updateStat(myStats, d.myDeck||"未設定", isWin, sec); updateStat(oppStats, d.oppDeck||"不明", isWin, sec);
+        });
+        document.getElementById('st_total').innerText = total; document.getElementById('st_winRate').innerText =
+        Math.round((wins/total)*100)+"%"; document.getElementById('st_coin').innerText =
+        Math.round((coins/total)*100)+"%"; document.getElementById('st_avgTime').innerText = countSec>0 ?
+        formatSeconds(Math.floor(totalSec/countSec)) : "-";
+        renderTable('tableMyDeck', myStats); renderTable('tableOppDeck', oppStats);
+        }
+        function renderTable(id, stats) {
+        const t = document.getElementById(id); t.innerHTML = `<tr>
+            <th>デッキ</th>
+            <th>数</th>
+            <th>勝率</th>
+            <th>平均時間</th>
+        </tr>`;
+        Object.keys(stats).sort((a,b)=>stats[b].t-stats[a].t).forEach(k=>{
+        const s = stats[k]; const rate = Math.round((s.w/s.t)*100) + "%"; const avgT = s.timeCnt>0 ?
+        formatSeconds(Math.floor(s.timeSum/s.timeCnt)) : "-";
+        t.innerHTML += `<tr>
+            <td>${k}</td>
+            <td>${s.t}</td>
+            <td>${rate}</td>
+            <td>${avgT}</td>
+        </tr>`;
+        });
+        }
+        let editingRowId = null;
+        function editLog(id) {
+        const row = logData.find(r => r.id === id); if(!row) return;
+        editingRowId = id;
+        document.getElementById('editMyDeck').value = row.myDeck; document.getElementById('editOppDeck').value =
+        row.oppDeck;
+        document.getElementById('editTurn').value = (row.turn.includes("先")||row.turn==="First")?"先攻":"後攻";
+        document.getElementById('editResult').value = (row.result||"").includes("WIN")?"WIN":"LOSE";
+        document.getElementById('editMatchType').value = row.type || "ランクマッチ";
+        document.getElementById('editModal').style.display = 'flex';
+        }
+        function closeModal() { document.getElementById('editModal').style.display = 'none'; }
+        async function submitEdit() {
+        const row = logData.find(r => r.id === editingRowId);
+        const payload = {
+        action: 'update_log', id: editingRowId, startTime: row.date, endTime: row.date, duration: row.duration||0,
+        myDeck: document.getElementById('editMyDeck').value, oppDeck: document.getElementById('editOppDeck').value,
+        coinToss: row.coin, turn: document.getElementById('editTurn').value, result:
+        document.getElementById('editResult').value, matchType: document.getElementById('editMatchType').value
+        };
+        await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
+        localStorage.setItem('md_refresh_signal', Date.now());
+        closeModal(); setTimeout(loadData, 1500);
+        }
+        function deleteLog(id) { if(confirm("削除しますか？")) { fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body:
+        JSON.stringify({ action: 'delete_log', id: id }) }); localStorage.setItem('md_refresh_signal', Date.now());
+        setTimeout(loadData, 1500); }}
+        function saveFilter() { const s = document.getElementById('dateStart').value; const e =
+        document.getElementById('dateEnd').value; const name = prompt("フィルタ名:"); if(name) { const saved =
+        JSON.parse(localStorage.getItem('md_saved_filters')||"[]"); saved.push({name:name, start:s, end:e});
+        localStorage.setItem('md_saved_filters', JSON.stringify(saved)); renderSavedFilters(); } }
+        function renderSavedFilters() { document.getElementById('savedFilters').innerHTML =
+        (JSON.parse(localStorage.getItem('md_saved_filters')||"[]")).map((f,i)=>`<span class="saved-tag"
+            onclick="loadSavedFilter(${i})">${f.name}</span>`).join(""); }
+        function loadSavedFilter(i) { const f = JSON.parse(localStorage.getItem('md_saved_filters'))[i];
+        document.getElementById('dateStart').value = f.start; document.getElementById('dateEnd').value = f.end;
+        setFilterTime('custom'); }
+        async function checkNewDeck(sel) { if (sel.value === "__NEW__") { const n = prompt("デッキ名:"); if(n) { await
+        fetch(GAS_URL, { method:'POST', mode:'no-cors', body: JSON.stringify({action:'add_deck', newDeck:n})});
+        setTimeout(loadData,2000); sel.value = n; } else sel.value=""; } if(sel.id==='myDeckSelect')
+        localStorage.setItem('md_last_deck', sel.value); }
+        function log(m,t="info"){const b=document.getElementById('logs');const
+        c=t==="important"?"#ff0":t==="raw"?"#555":"#0f0";b.innerHTML=`<span style="color:${c}">[${new
+            Date().toLocaleTimeString()}] ${m}</span><br>`+b.innerHTML;}
+        async function startSystem() {
+        if(!GAS_URL) return alert("URL未設定");
+        document.getElementById('btnStartSystem').disabled = true; log("起動...", "important");
+        try {
+        if(!worker) { worker = await Tesseract.createWorker(); await worker.loadLanguage('eng+jpn'); await
+        worker.initialize('eng+jpn'); log("OCR準備完了", "important"); }
+        stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "never" } });
+        const video = document.getElementById('video'); video.srcObject = stream;
+        video.onloadedmetadata = () => { video.play(); loop(); };
+        } catch(e) { document.getElementById('btnStartSystem').disabled=false; }
+        }
+        async function loop() {
+        if(!stream || !stream.active) return;
+        if(isProcessing) { requestAnimationFrame(loop); return; }
+        const video = document.getElementById('video');
+        if(video.videoWidth===0) { requestAnimationFrame(loop); return; }
+        isProcessing = true;
+        try {
+        const canvas = document.getElementById('displayCanvas'); const ctx = canvas.getContext('2d'); const guide =
+        document.getElementById('cropGuide');
+        let cX, cY, cW, cH;
+        if (isGameActive) {
+        cX=0; cW=video.videoWidth; cY=video.videoHeight*0.33; cH=video.videoHeight*0.34;
+        if(guide){guide.style.left="0%"; guide.style.width="100%"; guide.style.top="33%"; guide.style.height="34%";
+        guide.style.borderColor="#f00";}
+        if(document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "試合中 (中央監視)";
+        } else {
+        cX=video.videoWidth*0.33; cW=video.videoWidth*0.33; cY=video.videoHeight*0.63; cH=video.videoHeight*0.10;
+        if(guide){guide.style.left="33%"; guide.style.width="33%"; guide.style.top="63%"; guide.style.height="10%";
+        guide.style.borderColor="#0f0";}
+        if(document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "待機中 (下部監視)";
+        }
+        if(canvas.width !== 800) { canvas.width=800; canvas.height=cH*(800/cW); }
+        ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
+        let th = isGameActive ? 172 : 72; let cont = isGameActive ? 0 : 105;
+        let imgD = ctx.getImageData(0, 0, canvas.width, canvas.height); let d = imgD.data;
+        const f = (259*(cont+255))/(255*(259-cont));
+        for(let i=0; i<d.length; i+=4){ let g=(d[i]+d[i+1]+d[i+2])/3; if(cont!==0) g=f*(g-128)+128; const c=g>th?255:0;
+            d[i]=d[i+1]=d[i+2]=c;
+            }
+            ctx.putImageData(imgD, 0, 0);
+            const ret = await worker.recognize(canvas);
+            const txt = ret.data.text.replace(/\s+/g, "").toUpperCase();
+            if(txt.length>1) log(txt, "raw");
+            analyze(txt);
+            } catch(e) { console.error(e); } finally { isProcessing = false; setTimeout(loop, 300); }
+            }
+            function analyze(t) {
+            if (!isGameActive) {
+            if ((t.includes("相手")||t.includes("対戦")) && t.includes("選択")) setCoin("裏", "後攻", "コイン裏");
+            else if (t.includes("選択")||t.includes("先攻")||t.includes("後攻")) setCoin("表", "先攻", "コイン表");
+            else if (t.includes("あなたが先攻")) setCoin("表", "先攻", "手番(先)");
+            else if (t.includes("あなたが後攻")) setCoin("裏", "後攻", "手番(後)");
+            else if (t.includes("LP8000")||t.includes("TURN")||t.includes("DRAW")) manualStart();
+            }
+            if (isGameActive) {
+            if (Date.now()-lastResultTime<10000) return; if (t.includes("CLOSE")) return; if
+                (t.includes("VICTORY")||t.includes("VICTDRY")||t.includes("VICT0RY")||t.includes("VIGTORY")||t.includes("VlCTORY")||t.includes("勝利"))
+                finish("WIN", t); else if
+                (t.includes("LOSE")||t.includes("L0SE")||t.includes("LDSE")||t.includes("DEFEAT")||t.includes("敗北"))
+                finish("LOSE", t); } } function setCoin(c, tr, r) { if(currentCoin!==c){ currentCoin=c; const
+                tE=getUI('turnOrder'); if(tE && tE.value==="Unknown" ) tE.value=tr; log(r,"important"); manualStart(); }
+                } function manualStart() { if(!isGameActive) { isGameActive=true; gameStartTime=Date.now();
+                startTimer(); updateUI(); log("試合開始","important"); } } function finish(r, w) {
+                lastResultTime=Date.now(); const sec=Math.floor((lastResultTime-gameStartTime)/1000);
+                log(`決着:${r}`,"important"); const myD=getUI('myDeckSelect') ? getUI('myDeckSelect').value : "" ; const
+                oppD=getUI('oppDeckSelect') ? getUI('oppDeckSelect').value : "" ; const turn=getUI('turnOrder') ?
+                getUI('turnOrder').value : "" ; const type=getUI('matchType') ? getUI('matchType').value : "" ; const
+                p={ action: 'record' , startTime: new Date(gameStartTime).toLocaleString('ja-JP'), endTime: new
+                Date(lastResultTime).toLocaleString('ja-JP'), duration: sec, myDeck: myD, oppDeck: oppD, coinToss:
+                currentCoin, turn: turn, result: r, matchType: type }; fetch(GAS_URL, { method: 'POST' , mode: 'no-cors'
+                , body: JSON.stringify(p) }).then(()=> { showToast("記録しました"); localStorage.setItem('md_refresh_signal',
+                Date.now()); resetGame(); setTimeout(loadData,2000); });
+                }
+                function resetGame() {
+                isGameActive=false; currentCoin="不明";
+                const tE = getUI('turnOrder'); if(tE) tE.value="Unknown";
+                const oE = getUI('oppDeckSelect'); if(oE) oE.value="";
+                stopTimer(); updateUI();
+                }
+                function startTimer() { if(timerInterval) clearInterval(timerInterval); timerInterval=setInterval(()=>{
+                const s=Math.floor((Date.now()-gameStartTime)/1000); document.getElementById('timeVal').innerText=s+"s";
+                const pT = getUI('pip_time'); if(pT) pT.innerText=s+"s"; },1000); }
+                function stopTimer() { if(timerInterval) clearInterval(timerInterval);
+                document.getElementById('timeVal').innerText="0s"; const pT = getUI('pip_time'); if(pT)
+                pT.innerText="0s"; }
+                function updateUI() {
+                const txt = isGameActive?"試合中":"待機中"; const cls = isGameActive?"status-badge
+                active-badge":"status-badge";
+                document.getElementById('stateBadge').innerText=txt;
+                document.getElementById('stateBadge').className=cls;
+                document.getElementById('coinVal').innerText=currentCoin;
+                const pS = getUI('pip_state'); if(pS) { pS.innerText=txt; pS.style.color=isGameActive?"#ff5252":"#aaa";
+                }
+                const pC = getUI('pip_coin'); if(pC) pC.innerText=`Coin: ${currentCoin}`;
+                }
+                </script>
