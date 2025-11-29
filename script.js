@@ -8,6 +8,12 @@ let logData = []; let filteredData = []; let deckList = [];
 let sessionStartTime = 0;
 let pipWindowRef = null;
 
+// Turn Detection State
+let isDeterminingTurn = false;
+let turnDetectStartTime = 0;
+const TURN_DETECT_TIMEOUT_MS = 15000;
+let currentOCRMode = "ALL";
+
 // レイアウト設定
 let pipLayoutMode = localStorage.getItem('md_pip_layout') || 'portrait';
 
@@ -581,6 +587,7 @@ function showInputModal(doc, message, callback) {
 }
 
 function log(m, t = "info") { const b = document.getElementById('logs'); const c = t === "important" ? "#ff0" : t === "raw" ? "#555" : "#0f0"; b.innerHTML = `<span style="color:${c}">[${new Date().toLocaleTimeString()}] ${m}</span><br>` + b.innerHTML; }
+
 async function startSystem() {
     if (!GAS_URL) return alert("URL未設定");
     document.getElementById('btnStartSystem').disabled = true; log("起動...", "important");
@@ -591,6 +598,7 @@ async function startSystem() {
         video.onloadedmetadata = () => { video.play(); loop(); };
     } catch (e) { document.getElementById('btnStartSystem').disabled = false; }
 }
+
 async function loop() {
     if (!stream || !stream.active) return;
     if (isProcessing) { requestAnimationFrame(loop); return; }
@@ -600,56 +608,206 @@ async function loop() {
     try {
         const canvas = document.getElementById('displayCanvas'); const ctx = canvas.getContext('2d'); const guide = document.getElementById('cropGuide');
         let cX, cY, cW, cH;
-        if (isGameActive) {
+        let filterType = "standard";
+
+        // Determine Phase
+        let phase = "WAIT";
+        if (isDeterminingTurn) phase = "TURN";
+        else if (isGameActive) phase = "GAME";
+
+        // Priority 1: Turn Detection Mode
+        if (phase === "TURN") {
+            // Top 58%, Height 12%, Left 30%, Width 40% (Verified settings)
+            cX = video.videoWidth * 0.30;
+            cW = video.videoWidth * 0.40;
+            cY = video.videoHeight * 0.58;
+            cH = video.videoHeight * 0.12;
+            filterType = "yellow_boost";
+
+            if (guide) {
+                guide.style.left = "30%"; guide.style.width = "40%";
+                guide.style.top = "58%"; guide.style.height = "12%";
+                guide.style.borderColor = "#ff0"; // Yellow guide
+            }
+            if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "手番判定中 (黄色文字)";
+
+            // Timeout Check
+            if (Date.now() - turnDetectStartTime > TURN_DETECT_TIMEOUT_MS) {
+                log("手番判定タイムアウト: 判定モードを終了します", "important");
+                isDeterminingTurn = false;
+                // Game is already active, so just return to normal monitoring
+            }
+        }
+        // Priority 2: Game Active (Normal Monitoring)
+        else if (phase === "GAME") {
             cX = 0; cW = video.videoWidth; cY = video.videoHeight * 0.33; cH = video.videoHeight * 0.34;
+            filterType = "standard";
             if (guide) { guide.style.left = "0%"; guide.style.width = "100%"; guide.style.top = "33%"; guide.style.height = "34%"; guide.style.borderColor = "#f00"; }
             if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "試合中 (中央監視)";
-        } else {
+        }
+        // Priority 3: Waiting (Coin Toss Monitoring)
+        else {
             cX = video.videoWidth * 0.33; cW = video.videoWidth * 0.33; cY = video.videoHeight * 0.63; cH = video.videoHeight * 0.10;
+            filterType = "standard";
             if (guide) { guide.style.left = "33%"; guide.style.width = "33%"; guide.style.top = "63%"; guide.style.height = "10%"; guide.style.borderColor = "#0f0"; }
             if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "待機中 (下部監視)";
         }
-        if (canvas.width !== 800) { canvas.width = 800; canvas.height = cH * (800 / cW); }
+
+        // Canvas Resize (Match crop size for full resolution)
+        const targetW = Math.floor(cW);
+        const targetH = Math.floor(cH);
+        if (canvas.width !== targetW || canvas.height !== targetH) {
+            canvas.width = targetW; canvas.height = targetH;
+        }
+
         ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
-        let th = isGameActive ? 172 : 72; let cont = isGameActive ? 0 : 105;
-        if (document.getElementById('monitorParam')) document.getElementById('monitorParam').innerText = `明:${th} 強:${cont}`;
-        let imgD = ctx.getImageData(0, 0, canvas.width, canvas.height); let d = imgD.data;
-        const f = (259 * (cont + 255)) / (255 * (259 - cont));
-        for (let i = 0; i < d.length; i += 4) {
-            let g = (d[i] + d[i + 1] + d[i + 2]) / 3;
-            if (cont !== 0) g = f * (g - 128) + 128;
-            const c = g > th ? 255 : 0; d[i] = d[i + 1] = d[i + 2] = c;
+
+        let imgD = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let d = imgD.data;
+
+        if (filterType === "yellow_boost") {
+            // Yellow Boost Filter
+            for (let i = 0; i < d.length; i += 4) {
+                const r = d[i]; const g = d[i + 1]; const b = d[i + 2];
+                const yellowScore = (r + g) / 2 - b;
+                const val = yellowScore > 40 ? 255 : 0;
+                d[i] = d[i + 1] = d[i + 2] = val;
+            }
+        } else {
+            // Standard Filter
+            let th = isGameActive ? 172 : 72; let cont = isGameActive ? 0 : 105;
+            const f = (259 * (cont + 255)) / (255 * (259 - cont));
+            for (let i = 0; i < d.length; i += 4) {
+                let g = (d[i] + d[i + 1] + d[i + 2]) / 3;
+                if (cont !== 0) g = f * (g - 128) + 128;
+                const c = g > th ? 255 : 0;
+                d[i] = d[i + 1] = d[i + 2] = c;
+            }
         }
         ctx.putImageData(imgD, 0, 0);
+
+        // Dynamic OCR Mode Switching
+        // Sync with phase: Only restrict in "GAME" phase
+        const desiredMode = (phase === "GAME") ? "RESTRICTED" : "ALL";
+        if (currentOCRMode !== desiredMode) {
+            if (desiredMode === "RESTRICTED") {
+                await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789勝利敗北' });
+                log("OCRモード: 限定 (英数字+勝敗)", "raw");
+            } else {
+                await worker.setParameters({ tessedit_char_whitelist: '' });
+                log("OCRモード: 全開放 (日本語含む)", "raw");
+            }
+            currentOCRMode = desiredMode;
+        }
+
         const ret = await worker.recognize(canvas);
         const txt = ret.data.text.replace(/\s+/g, "").toUpperCase();
-        if (txt.length > 1) log(txt, "raw");
-        analyze(txt);
-    } catch (e) { console.error(e); } finally { isProcessing = false; setTimeout(loop, 300); }
-}
-function analyze(t) {
-    if (!isGameActive) {
-        if ((t.includes("相手") || t.includes("対戦")) && t.includes("選択")) setCoin("裏", "後攻", "コイン裏");
-        else if (t.includes("選択") || t.includes("先攻") || t.includes("後攻")) setCoin("表", "先攻", "コイン表");
-        else if (t.includes("あなたが先攻")) setCoin("表", "先攻", "手番(先)");
-        else if (t.includes("あなたが後攻")) setCoin("裏", "後攻", "手番(後)");
-        else if (t.includes("LP8000") || t.includes("TURN") || t.includes("DRAW")) manualStart();
+        if (txt.length > 1) log("OCR: " + txt, "raw");
+        if (txt.length > 1) analyze(txt);
+    } catch (e) { console.error(e); } finally {
+        isProcessing = false;
+        // Faster loop during turn detection
+        setTimeout(loop, isDeterminingTurn ? 50 : 300);
     }
+}
+
+function analyze(t) {
+    // 1. Turn Detection Mode
+    if (isDeterminingTurn) {
+        if (t.includes("先攻")) {
+            setTurn("先攻", "手番判定: 先攻");
+            manualStart(); // Confirm game start (already active, but resets determining flag)
+            return;
+        }
+        if (t.includes("後攻")) {
+            setTurn("後攻", "手番判定: 後攻");
+            manualStart();
+            return;
+        }
+        // Fail-safe: if we see game elements, assume we missed it and stop detection
+        if (t.includes("LP8000") || t.includes("DRAW") || t.includes("TURN")) {
+            log("手番判定スキップ: 試合要素検知", "important");
+            manualStart();
+            return;
+        }
+        return;
+    }
+
+    // 2. Waiting Mode (Coin Toss)
+    if (!isGameActive && !isDeterminingTurn) {
+        if ((t.includes("相手") || t.includes("対戦")) && t.includes("選択")) {
+            setCoin("裏", "コイン: 裏 (相手選択)");
+            startTurnDetection();
+        }
+        else if (t.includes("選択") || t.includes("先攻") || t.includes("後攻")) {
+            if (t.includes("選択")) {
+                setCoin("表", "コイン: 表 (自分選択)");
+                startTurnDetection();
+            }
+            // Irregular case: Direct detection of Turn without Coin Toss screen
+            else if (t.includes("先攻") || t.includes("後攻")) {
+                log("手番判定モードへ直接移行", "important");
+                startTurnDetection();
+            }
+        }
+        // Direct Game Start detection
+        else if (t.includes("LP8000") || t.includes("TURN") || t.includes("DRAW")) {
+            manualStart();
+        }
+    }
+
+    // 3. Game Active (Result)
     if (isGameActive) {
         if (Date.now() - lastResultTime < 10000) return;
         if (t.includes("CLOSE")) return;
         if (t.includes("VICTORY") || t.includes("VICTDRY") || t.includes("VICT0RY") || t.includes("VIGTORY") || t.includes("VlCTORY") || t.includes("勝利")) finish("WIN", t);
-        else if (t.includes("LOSE") || t.includes("L0SE") || t.includes("LDSE") || t.includes("DEFEAT") || t.includes("敗北")) finish("LOSE", t);
+        else if (t.includes("LOSE") || t.includes("L0SE") || t.includes("LDSE") || t.includes("DEFEAT") || t.includes("敗北") || t.includes("LOBE")) finish("LOSE", t);
     }
 }
-function setCoin(c, tr, r) {
+
+function startTurnDetection() {
+    if (isDeterminingTurn) return;
+    isDeterminingTurn = true;
+    turnDetectStartTime = Date.now();
+
+    // Start Game Timer immediately (User Request)
+    if (!isGameActive) {
+        isGameActive = true;
+        gameStartTime = Date.now();
+        startTimer();
+        updateUI();
+        log("試合開始 (手番判定中...)", "important");
+    }
+
+    if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "手番判定中 (黄色文字)";
+}
+
+function setCoin(c, msg) {
     if (currentCoin !== c) {
         currentCoin = c;
-        const tE = getUI('turnOrder'); if (tE && tE.value === "Unknown") tE.value = tr;
-        log(r, "important"); manualStart();
+        log(msg, "important");
+        updateUI();
     }
 }
-function manualStart() { if (!isGameActive) { isGameActive = true; gameStartTime = Date.now(); startTimer(); updateUI(); log("試合開始", "important"); } }
+
+function setTurn(tr, msg) {
+    const tE = getUI('turnOrder');
+    if (tE) tE.value = tr;
+    log(msg, "important");
+    updateUI();
+}
+
+function manualStart() {
+    isDeterminingTurn = false; // Stop turn detection
+    if (!isGameActive) {
+        isGameActive = true;
+        gameStartTime = Date.now();
+        startTimer();
+        updateUI();
+        log("試合開始", "important");
+    }
+}
+
 function finish(r, w) {
     lastResultTime = Date.now(); const sec = Math.floor((lastResultTime - gameStartTime) / 1000); log(`決着:${r}`, "important");
 
@@ -664,14 +822,17 @@ function finish(r, w) {
     };
     fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(p) }).then(() => { showToast("記録しました"); localStorage.setItem('md_refresh_signal', Date.now()); resetGame(); setTimeout(loadData, 2000); });
 }
+
 function resetGame() {
-    isGameActive = false; currentCoin = "不明";
+    isGameActive = false; isDeterminingTurn = false; currentCoin = "不明";
     const tE = getUI('turnOrder'); if (tE) tE.value = "Unknown";
     const oE = getUI('oppDeckSelect'); if (oE) oE.value = "";
     stopTimer(); updateUI();
 }
+
 function startTimer() { if (timerInterval) clearInterval(timerInterval); timerInterval = setInterval(() => { const s = Math.floor((Date.now() - gameStartTime) / 1000); document.getElementById('timeVal').innerText = s + "s"; const pT = getUI('pip_time'); if (pT) pT.innerText = s + "s"; }, 1000); }
 function stopTimer() { if (timerInterval) clearInterval(timerInterval); document.getElementById('timeVal').innerText = "0s"; const pT = getUI('pip_time'); if (pT) pT.innerText = "0s"; }
+
 function updateUI() {
     const txt = isGameActive ? "試合中" : "待機中"; const cls = isGameActive ? "status-badge active-badge" : "status-badge";
     document.getElementById('stateBadge').innerText = txt; document.getElementById('stateBadge').className = cls; document.getElementById('coinVal').innerText = currentCoin;
