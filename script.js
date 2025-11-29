@@ -19,8 +19,106 @@ window.onload = () => {
     });
     const savedSession = localStorage.getItem('md_session_start');
     if (savedSession) sessionStartTime = parseInt(savedSession);
+    setupEventListeners();
     if (GAS_URL) loadData(); renderSavedFilters();
 };
+
+function setupEventListeners() {
+    // Header
+    const btnSaveUrl = document.getElementById('btnSaveUrl');
+    if (btnSaveUrl) btnSaveUrl.addEventListener('click', saveUrl);
+
+    // Tabs
+    const tabHome = document.getElementById('tab_home');
+    if (tabHome) tabHome.addEventListener('click', () => changeTab('home'));
+    const tabMonitor = document.getElementById('tab_monitor');
+    if (tabMonitor) tabMonitor.addEventListener('click', () => changeTab('monitor'));
+    const tabHistory = document.getElementById('tab_history');
+    if (tabHistory) tabHistory.addEventListener('click', () => changeTab('history'));
+    const tabAnalyze = document.getElementById('tab_analyze');
+    if (tabAnalyze) tabAnalyze.addEventListener('click', () => changeTab('analyze'));
+
+    // Main Controls
+    const btnStartSystem = document.getElementById('btnStartSystem');
+    if (btnStartSystem) btnStartSystem.addEventListener('click', startSystem);
+
+    const btnOpenPiP = document.getElementById('btnOpenPiP');
+    if (btnOpenPiP) btnOpenPiP.addEventListener('click', togglePiP);
+
+    const btnResetSession = document.getElementById('btnResetSession');
+    if (btnResetSession) btnResetSession.addEventListener('click', resetSession);
+
+    // PiP Placeholder
+    const btnClosePiP = document.getElementById('btnClosePiP');
+    if (btnClosePiP) btnClosePiP.addEventListener('click', closePiP);
+
+    // Recent & History Refresh
+    const btnRefreshRecent = document.getElementById('btnRefreshRecent');
+    if (btnRefreshRecent) btnRefreshRecent.addEventListener('click', loadData);
+
+    const btnRefreshHistory = document.getElementById('btnRefreshHistory');
+    if (btnRefreshHistory) btnRefreshHistory.addEventListener('click', loadData);
+
+    // Filter
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => setFilterTime(e.target.dataset.filter));
+    });
+
+    const filterMatchType = document.getElementById('filterMatchType');
+    if (filterMatchType) filterMatchType.addEventListener('change', applyFilter);
+
+    const btnApplyCustomFilter = document.getElementById('btnApplyCustomFilter');
+    if (btnApplyCustomFilter) btnApplyCustomFilter.addEventListener('click', () => setFilterTime('custom'));
+
+    const btnSaveFilter = document.getElementById('btnSaveFilter');
+    if (btnSaveFilter) btnSaveFilter.addEventListener('click', saveFilter);
+
+    // Edit Modal
+    const btnSubmitEdit = document.getElementById('btnSubmitEdit');
+    if (btnSubmitEdit) btnSubmitEdit.addEventListener('click', submitEdit);
+
+    const btnCancelEdit = document.getElementById('btnCancelEdit');
+    if (btnCancelEdit) btnCancelEdit.addEventListener('click', closeModal);
+
+    // Portable Controls (handled separately for PiP support)
+    setupPortableListeners(document);
+}
+
+function setupPortableListeners(doc) {
+    // Settings
+    const myDeckSelect = doc.getElementById('myDeckSelect');
+    if (myDeckSelect) {
+        myDeckSelect.onchange = (e) => checkNewDeck(e.target);
+    }
+
+    const oppDeckSelect = doc.getElementById('oppDeckSelect');
+    if (oppDeckSelect) {
+        oppDeckSelect.onchange = (e) => checkNewDeck(e.target);
+    }
+
+    // Manual Controls
+    const btnManualStart = doc.getElementById('btnManualStart');
+    if (btnManualStart) btnManualStart.onclick = manualStart;
+
+    const btnResetGame = doc.getElementById('btnResetGame');
+    if (btnResetGame) btnResetGame.onclick = resetGame;
+
+    const btnForceWin = doc.getElementById('btnForceWin');
+    if (btnForceWin) btnForceWin.onclick = () => finish('WIN', '手動');
+
+    const btnForceLose = doc.getElementById('btnForceLose');
+    if (btnForceLose) btnForceLose.onclick = () => finish('LOSE', '手動');
+
+    // Layout Toggle
+    const btnToggleLayout = doc.getElementById('btnToggleLayout');
+    if (btnToggleLayout) {
+        btnToggleLayout.onclick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleLayout();
+        };
+    }
+}
 
 function getUI(id) {
     let el = document.getElementById(id);
@@ -36,12 +134,23 @@ async function togglePiP() {
     if (pipWindowRef) { pipWindowRef.close(); return; }
 
     try {
-        // 初期サイズ設定 (横長は170px, 縦長は650px)
+        // 初期サイズ設定 (横長は1150px, 縦長は320px)
         const width = pipLayoutMode === 'landscape' ? 1150 : 320;
         const height = pipLayoutMode === 'landscape' ? 170 : 650;
 
         const pipWin = await documentPictureInPicture.requestWindow({ width: width, height: height });
         pipWindowRef = pipWin;
+        log("PiPウィンドウ作成成功");
+
+        // requestWindowはInnerサイズを指定するが、resizeToはOuterサイズを指定する。
+        // レイアウト変更時(resizeTo使用)とサイズ感を合わせるため、ここでresizeToを呼ぶ。
+        try {
+            pipWin.resizeTo(width, height);
+            log("PiPリサイズ成功");
+        } catch (e) {
+            console.error("Resize failed:", e);
+            log("PiPリサイズ失敗: " + e);
+        }
 
         pipWin.document.body.style.backgroundColor = "#181818";
         pipWin.document.body.style.color = "#e0e0e0";
@@ -73,15 +182,25 @@ async function togglePiP() {
 
         // コンテンツ移動
         const pipContent = document.getElementById('pipContent');
-        pipContent.style.display = "flex";
-        pipWin.document.body.appendChild(pipContent);
+        if (pipContent) {
+            pipContent.style.display = "flex";
+            pipWin.document.body.appendChild(pipContent);
+            log("PiPコンテンツ移動成功");
+        } else {
+            log("PiPコンテンツが見つかりません", "important");
+        }
 
         const controls = document.getElementById('portableControls');
-        pipContent.querySelector('#pipControlsTarget').appendChild(controls);
+        const target = pipContent ? pipContent.querySelector('#pipControlsTarget') : null;
+        if (controls && target) {
+            target.appendChild(controls);
+            log("PiPコントロール移動成功");
+        } else {
+            log("PiPコントロール移動失敗: " + (controls ? "Targetなし" : "Controlsなし"), "important");
+        }
 
-        // イベントリスナー設定
-        const btnLayout = pipWin.document.getElementById('btnToggleLayout');
-        if (btnLayout) btnLayout.onclick = toggleLayout;
+        // イベントリスナー再設定 (PiP内)
+        setupPortableListeners(pipWin.document);
 
         document.getElementById('pipPlaceholder').style.display = "block";
 
@@ -90,50 +209,68 @@ async function togglePiP() {
             const placeholder = document.getElementById('pipPlaceholder');
             if (parent && controls) parent.insertBefore(controls, placeholder);
 
-            document.body.appendChild(pipContent);
-            pipContent.style.display = "none";
-            placeholder.style.display = "none";
+            if (pipContent) {
+                document.body.appendChild(pipContent);
+                pipContent.style.display = "none";
+            }
+            if (placeholder) placeholder.style.display = "none";
             pipWindowRef = null;
+
+            // メインウィンドウに戻ったのでリスナー再設定
+            setupPortableListeners(document);
         });
-    } catch (e) { alert("PiPエラー: " + e); }
+    } catch (e) {
+        console.error(e);
+        alert("PiPエラー: " + e);
+    }
 }
 
-// ★ここが修正ポイント：縦に戻す際の位置補正を追加
 function toggleLayout() {
-    if (!pipWindowRef) return;
+    if (!pipWindowRef) {
+        console.error("PiP window reference is missing");
+        return;
+    }
 
-    if (pipLayoutMode === 'portrait') {
-        // → 横長へ変更 (Landscape)
-        pipLayoutMode = 'landscape';
-        pipWindowRef.resizeTo(1150, 170); // 薄くする
-        pipWindowRef.document.body.classList.add('landscape');
-    } else {
-        // → 縦長へ変更 (Portrait)
-        pipLayoutMode = 'portrait';
+    try {
+        if (pipLayoutMode === 'portrait') {
+            // → 横長へ変更 (Landscape)
+            pipLayoutMode = 'landscape';
 
-        // 画面からはみ出さないように位置調整
-        try {
+            // 画面からはみ出さないように位置調整 (横幅が増えるため左にずらす)
+            const currentX = pipWindowRef.screenX;
+            const targetWidth = 1150;
+            const screenW = pipWindowRef.screen.availWidth;
+
+            if (currentX + targetWidth > screenW) {
+                const newX = Math.max(0, screenW - targetWidth - 50);
+                pipWindowRef.moveTo(newX, pipWindowRef.screenY);
+            }
+
+            pipWindowRef.resizeTo(1150, 170);
+            pipWindowRef.document.body.classList.add('landscape');
+        } else {
+            // → 縦長へ変更 (Portrait)
+            pipLayoutMode = 'portrait';
+
+            // 画面からはみ出さないように位置調整
             const currentY = pipWindowRef.screenY;
             const targetHeight = 650;
             const screenH = pipWindowRef.screen.availHeight;
 
-            // 下にはみ出る場合、上に持ち上げる
             if (currentY + targetHeight > screenH) {
-                // 余裕を持って少し上(マージン20px)に配置
                 const newY = Math.max(0, screenH - targetHeight - 50);
                 pipWindowRef.moveTo(pipWindowRef.screenX, newY);
             }
-        } catch (e) {
-            console.log("位置補正スキップ", e);
-        }
 
-        // 少し待ってからリサイズ (挙動安定のため)
-        setTimeout(() => {
+            // 即時リサイズ実行
             pipWindowRef.resizeTo(320, 650);
             pipWindowRef.document.body.classList.remove('landscape');
-        }, 10);
+        }
+        localStorage.setItem('md_pip_layout', pipLayoutMode);
+    } catch (e) {
+        console.error("Layout toggle failed:", e);
+        alert("レイアウト切り替えエラー: " + e.message);
     }
-    localStorage.setItem('md_pip_layout', pipLayoutMode);
 }
 
 function closePiP() {
@@ -158,11 +295,13 @@ function toTimeStr(val) { const sec = parseDuration(val); return sec > 0 ? forma
 
 function resetSession() { const now = Date.now(); localStorage.setItem('md_session_start', now); sessionStartTime = now; showToast("ここからの成績を集計します"); renderHome(); }
 function saveUrl() { localStorage.setItem('md_tracker_url', document.getElementById('gasUrlInput').value); showToast("保存しました"); loadData(); }
+
 function changeTab(id) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     document.getElementById(id).classList.add('active');
-    document.querySelector(`.tab[onclick="changeTab('${id}')"]`).classList.add('active');
+    const tabBtn = document.getElementById('tab_' + id);
+    if (tabBtn) tabBtn.classList.add('active');
     if (id !== 'record' && id !== 'monitor') loadData();
 }
 
@@ -245,7 +384,15 @@ function renderHistory() {
 
 // --- 分析 ---
 let currentTimeFilter = 'all';
-function setFilterTime(type) { currentTimeFilter = type; document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active')); if (type !== 'custom') event.target.classList.add('active'); applyFilter(); }
+function setFilterTime(type) {
+    currentTimeFilter = type;
+    document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('active');
+        if (b.dataset.filter === type) b.classList.add('active');
+    });
+    applyFilter();
+}
+
 function applyFilter() {
     const now = new Date(); const matchType = document.getElementById('filterMatchType').value;
     filteredData = logData.filter(row => {
@@ -261,6 +408,7 @@ function applyFilter() {
     });
     renderStats();
 }
+
 function renderStats() {
     const total = filteredData.length;
     if (total === 0) { document.getElementById('st_total').innerText = "0"; document.getElementById('st_winRate').innerText = "0%"; document.getElementById('st_avgTime').innerText = "-"; document.getElementById('tableMyDeck').innerHTML = ""; document.getElementById('tableOppDeck').innerHTML = ""; return; }
@@ -274,6 +422,7 @@ function renderStats() {
     document.getElementById('st_total').innerText = total; document.getElementById('st_winRate').innerText = Math.round((wins / total) * 100) + "%"; document.getElementById('st_coin').innerText = Math.round((coins / total) * 100) + "%"; document.getElementById('st_avgTime').innerText = countSec > 0 ? formatSeconds(Math.floor(totalSec / countSec)) : "-";
     renderTable('tableMyDeck', myStats); renderTable('tableOppDeck', oppStats);
 }
+
 function renderTable(id, stats) {
     const t = document.getElementById(id); t.innerHTML = `<tr><th>デッキ</th><th>数</th><th>勝率</th><th>平均時間</th></tr>`;
     Object.keys(stats).sort((a, b) => stats[b].t - stats[a].t).forEach(k => {
@@ -281,6 +430,7 @@ function renderTable(id, stats) {
         t.innerHTML += `<tr><td>${k}</td><td>${s.t}</td><td>${rate}</td><td>${avgT}</td></tr>`;
     });
 }
+
 let editingRowId = null;
 function editLog(id) {
     const row = logData.find(r => r.id === id); if (!row) return;
@@ -304,10 +454,129 @@ async function submitEdit() {
     closeModal(); setTimeout(loadData, 1500);
 }
 function deleteLog(id) { if (confirm("削除しますか？")) { fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_log', id: id }) }); localStorage.setItem('md_refresh_signal', Date.now()); setTimeout(loadData, 1500); } }
-function saveFilter() { const s = document.getElementById('dateStart').value; const e = document.getElementById('dateEnd').value; const name = prompt("フィルタ名:"); if (name) { const saved = JSON.parse(localStorage.getItem('md_saved_filters') || "[]"); saved.push({ name: name, start: s, end: e }); localStorage.setItem('md_saved_filters', JSON.stringify(saved)); renderSavedFilters(); } }
+
+function saveFilter() {
+    const s = document.getElementById('dateStart').value;
+    const e = document.getElementById('dateEnd').value;
+    const targetDoc = pipWindowRef ? pipWindowRef.document : document;
+    showInputModal(targetDoc, "フィルタ名:", (name) => {
+        if (name) {
+            const saved = JSON.parse(localStorage.getItem('md_saved_filters') || "[]");
+            saved.push({ name: name, start: s, end: e });
+            localStorage.setItem('md_saved_filters', JSON.stringify(saved));
+            renderSavedFilters();
+        }
+    });
+}
 function renderSavedFilters() { document.getElementById('savedFilters').innerHTML = (JSON.parse(localStorage.getItem('md_saved_filters') || "[]")).map((f, i) => `<span class="saved-tag" onclick="loadSavedFilter(${i})">${f.name}</span>`).join(""); }
 function loadSavedFilter(i) { const f = JSON.parse(localStorage.getItem('md_saved_filters'))[i]; document.getElementById('dateStart').value = f.start; document.getElementById('dateEnd').value = f.end; setFilterTime('custom'); }
-async function checkNewDeck(sel) { if (sel.value === "__NEW__") { const n = prompt("デッキ名:"); if (n) { await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'add_deck', newDeck: n }) }); setTimeout(loadData, 2000); sel.value = n; } else sel.value = ""; } if (sel.id === 'myDeckSelect') localStorage.setItem('md_last_deck', sel.value); }
+
+async function checkNewDeck(sel) {
+    if (sel.value === "__NEW__") {
+        const targetDoc = sel.ownerDocument;
+        showInputModal(targetDoc, "デッキ名:", async (n) => {
+            if (n) {
+                await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'add_deck', newDeck: n }) });
+                setTimeout(loadData, 2000);
+                sel.value = n;
+            } else {
+                sel.value = "";
+            }
+        });
+    }
+    if (sel.id === 'myDeckSelect') localStorage.setItem('md_last_deck', sel.value);
+}
+
+// --- カスタム入力モーダル ---
+function showInputModal(doc, message, callback) {
+    const existing = doc.getElementById('customInputModal');
+    if (existing) existing.remove();
+
+    const modalOverlay = doc.createElement('div');
+    modalOverlay.id = 'customInputModal';
+    modalOverlay.style.position = 'fixed';
+    modalOverlay.style.top = '0';
+    modalOverlay.style.left = '0';
+    modalOverlay.style.width = '100%';
+    modalOverlay.style.height = '100%';
+    modalOverlay.style.backgroundColor = 'rgba(0,0,0,0.7)';
+    modalOverlay.style.display = 'flex';
+    modalOverlay.style.justifyContent = 'center';
+    modalOverlay.style.alignItems = 'center';
+    modalOverlay.style.zIndex = '10000';
+
+    const modalContent = doc.createElement('div');
+    modalContent.style.backgroundColor = '#2d2d2d';
+    modalContent.style.padding = '20px';
+    modalContent.style.borderRadius = '8px';
+    modalContent.style.border = '1px solid #444';
+    modalContent.style.minWidth = '250px';
+    modalContent.style.textAlign = 'center';
+    modalContent.style.color = '#fff';
+
+    const msgP = doc.createElement('p');
+    msgP.innerText = message;
+    msgP.style.marginBottom = '10px';
+    modalContent.appendChild(msgP);
+
+    const input = doc.createElement('input');
+    input.type = 'text';
+    input.style.width = '100%';
+    input.style.padding = '8px';
+    input.style.marginBottom = '15px';
+    input.style.backgroundColor = '#1a1a1a';
+    input.style.border = '1px solid #555';
+    input.style.color = '#fff';
+    input.style.borderRadius = '4px';
+    modalContent.appendChild(input);
+
+    const btnContainer = doc.createElement('div');
+    btnContainer.style.display = 'flex';
+    btnContainer.style.justifyContent = 'flex-end';
+    btnContainer.style.gap = '10px';
+
+    const btnCancel = doc.createElement('button');
+    btnCancel.innerText = 'キャンセル';
+    btnCancel.style.padding = '5px 10px';
+    btnCancel.style.backgroundColor = '#555';
+    btnCancel.style.color = '#fff';
+    btnCancel.style.border = 'none';
+    btnCancel.style.borderRadius = '4px';
+    btnCancel.style.cursor = 'pointer';
+    btnCancel.onclick = () => {
+        modalOverlay.remove();
+        callback(null);
+    };
+
+    const btnOk = doc.createElement('button');
+    btnOk.innerText = 'OK';
+    btnOk.style.padding = '5px 10px';
+    btnOk.style.backgroundColor = '#4caf50';
+    btnOk.style.color = '#fff';
+    btnOk.style.border = 'none';
+    btnOk.style.borderRadius = '4px';
+    btnOk.style.cursor = 'pointer';
+    btnOk.onclick = () => {
+        const val = input.value;
+        modalOverlay.remove();
+        callback(val);
+    };
+
+    btnContainer.appendChild(btnCancel);
+    btnContainer.appendChild(btnOk);
+    modalContent.appendChild(btnContainer);
+    modalOverlay.appendChild(modalContent);
+    doc.body.appendChild(modalOverlay);
+
+    input.focus();
+    input.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            btnOk.click();
+        }
+    };
+}
+
 function log(m, t = "info") { const b = document.getElementById('logs'); const c = t === "important" ? "#ff0" : t === "raw" ? "#555" : "#0f0"; b.innerHTML = `<span style="color:${c}">[${new Date().toLocaleTimeString()}] ${m}</span><br>` + b.innerHTML; }
 async function startSystem() {
     if (!GAS_URL) return alert("URL未設定");

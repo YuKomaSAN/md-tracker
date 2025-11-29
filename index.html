@@ -15,15 +15,15 @@
         <div style="font-size: 0.8em;">
             GAS URL: <input type="text" id="gasUrlInput" placeholder="https://script.google..."
                 style="width: 200px; padding: 5px;">
-            <button onclick="saveUrl()" class="secondary" style="width:auto;">保存</button>
+            <button id="btnSaveUrl" class="secondary" style="width:auto;">保存</button>
         </div>
     </header>
 
     <div class="tabs">
-        <div class="tab active" onclick="changeTab('home')">🏠 ホーム</div>
-        <div class="tab" onclick="changeTab('monitor')">📺 映像モニタ</div>
-        <div class="tab" onclick="changeTab('history')">📝 履歴 (最新100)</div>
-        <div class="tab" onclick="changeTab('analyze')">📊 分析</div>
+        <div class="tab active" id="tab_home">🏠 ホーム</div>
+        <div class="tab" id="tab_monitor">📺 映像モニタ</div>
+        <div class="tab" id="tab_history">📝 履歴 (最新100)</div>
+        <div class="tab" id="tab_analyze">📊 分析</div>
     </div>
 
     <div id="home" class="page active">
@@ -39,12 +39,12 @@
         <div class="home-grid">
             <div class="col" id="mainControlCol">
                 <h3>🎮 コントロールパネル</h3>
-                <button class="primary" id="btnStartSystem" onclick="startSystem()">🚀 監視システム起動</button>
+                <button class="primary" id="btnStartSystem">🚀 監視システム起動</button>
 
                 <div id="portableControls">
                     <div id="topBtns" style="display:flex; gap:5px; margin-bottom:15px;">
-                        <button id="btnOpenPiP" class="secondary" onclick="togglePiP()">📱 縦型ミニ窓</button>
-                        <button class="secondary" onclick="resetSession()" style="background:#2c3e50;">⏱️
+                        <button id="btnOpenPiP" class="secondary">📱 縦型ミニ窓</button>
+                        <button class="secondary" id="btnResetSession" style="background:#2c3e50;">⏱️
                             集計リセット</button>
                     </div>
 
@@ -59,12 +59,12 @@
                             </select>
                         </div>
                         <div class="input-group">
-                            <label>自分</label><select id="myDeckSelect" onchange="checkNewDeck(this)">
+                            <label>自分</label><select id="myDeckSelect">
                                 <option value="">読み込み中...</option>
                             </select>
                         </div>
                         <div class="input-group">
-                            <label>相手</label><select id="oppDeckSelect" onchange="checkNewDeck(this)">
+                            <label>相手</label><select id="oppDeckSelect">
                                 <option value="">(不明)</option>
                             </select>
                         </div>
@@ -80,17 +80,17 @@
                     <div id="groupManual">
                         <h4>手動操作</h4>
                         <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-                            <button class="secondary" onclick="manualStart()">試合開始</button>
-                            <button class="secondary" onclick="resetGame()">リセット</button>
-                            <button class="danger" onclick="finish('WIN', '手動')">強制：勝</button>
-                            <button class="danger" style="background:#555;" onclick="finish('LOSE', '手動')">強制：負</button>
+                            <button class="secondary" id="btnManualStart">試合開始</button>
+                            <button class="secondary" id="btnResetGame">リセット</button>
+                            <button class="danger" id="btnForceWin">強制：勝</button>
+                            <button class="danger" style="background:#555;" id="btnForceLose">強制：負</button>
                         </div>
                     </div>
                 </div>
                 <div id="pipPlaceholder"
                     style="display:none; text-align:center; padding:20px; border:2px dashed #555; border-radius:8px; margin-top:10px;">
                     <p style="color:#aaa;">操作パネルはミニ窓で表示中</p>
-                    <button class="secondary" onclick="closePiP()">📥 ホームに戻す</button>
+                    <button class="secondary" id="btnClosePiP">📥 ホームに戻す</button>
                 </div>
 
                 <div id="logs">ログ待機中...</div>
@@ -110,7 +110,7 @@
                 <div class="col" style="border:none; background:#252525; padding:0;">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                         <h3 style="margin:0; border:none;">🕒 直近10戦</h3>
-                        <button class="secondary" onclick="loadData()" style="width:auto; font-size:0.8em;">更新</button>
+                        <button class="secondary" id="btnRefreshRecent" style="width:auto; font-size:0.8em;">更新</button>
                     </div>
                     <table id="recentTable">
                         <thead>
@@ -150,7 +150,7 @@
         <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
             <h3 style="margin:0; border:none; color:#fff;">最新100件</h3>
             <div><span id="historyMsg" style="color:#aaa; margin-right:10px;"></span><button class="secondary"
-                    onclick="loadData()" style="width: auto;">🔄 更新</button></div>
+                    id="btnRefreshHistory" style="width: auto;">🔄 更新</button></div>
         </div>
         <div class="col" style="overflow-x:auto; padding:0;">
             <table id="historyTable">
@@ -174,14 +174,14 @@
         <div class="filter-bar">
             <h3 style="border:none;">📊 詳細分析フィルター</h3>
             <div class="filter-row">
-                <div class="filter-btn" onclick="setFilterTime('1h')">1時間</div>
-                <div class="filter-btn" onclick="setFilterTime('24h')">24時間</div>
-                <div class="filter-btn" onclick="setFilterTime('week')">今週</div>
-                <div class="filter-btn" onclick="setFilterTime('month')">今月</div>
-                <div class="filter-btn active" onclick="setFilterTime('all')">全期間</div>
+                <div class="filter-btn" data-filter="1h">1時間</div>
+                <div class="filter-btn" data-filter="24h">24時間</div>
+                <div class="filter-btn" data-filter="week">今週</div>
+                <div class="filter-btn" data-filter="month">今月</div>
+                <div class="filter-btn active" data-filter="all">全期間</div>
             </div>
             <div class="filter-row"><label style="margin:0 10px 0 0;">種別:</label><select id="filterMatchType"
-                    onchange="applyFilter()" style="width:auto; margin:0;">
+                    style="width:auto; margin:0;">
                     <option value="all">すべて</option>
                     <option value="ランクマッチ">ランクマッチ</option>
                     <option value="レート">レート</option>
@@ -190,8 +190,8 @@
                 </select></div>
             <div class="filter-row" style="border-top:1px solid #444; padding-top:10px; margin-top:10px;"><input
                     type="datetime-local" id="dateStart" style="width:auto;"> ～ <input type="datetime-local"
-                    id="dateEnd" style="width:auto;"><button class="secondary" onclick="setFilterTime('custom')"
-                    style="width:auto;">適用</button><button class="secondary" onclick="saveFilter()"
+                    id="dateEnd" style="width:auto;"><button class="secondary" id="btnApplyCustomFilter"
+                    style="width:auto;">適用</button><button class="secondary" id="btnSaveFilter"
                     style="width:auto; margin-left:auto;">★ 条件保存</button></div>
             <div id="savedFilters"></div>
         </div>
@@ -257,7 +257,7 @@
                 <option value="LOSE">LOSE</option>
             </select>
             <div style="display:flex; gap:10px; margin-top:20px;"><button class="primary"
-                    onclick="submitEdit()">保存</button><button class="secondary" onclick="closeModal()">キャンセル</button>
+                    id="btnSubmitEdit">保存</button><button class="secondary" id="btnCancelEdit">キャンセル</button>
             </div>
         </div>
     </div>
