@@ -144,13 +144,16 @@ async function togglePiP() {
 
         // requestWindowはInnerサイズを指定するが、resizeToはOuterサイズを指定する。
         // レイアウト変更時(resizeTo使用)とサイズ感を合わせるため、ここでresizeToを呼ぶ。
-        try {
-            pipWin.resizeTo(width, height);
-            log("PiPリサイズ成功");
-        } catch (e) {
-            console.error("Resize failed:", e);
-            log("PiPリサイズ失敗: " + e);
-        }
+        // 即時実行だと効かない場合があるため、少し遅延させる
+        setTimeout(() => {
+            try {
+                pipWin.resizeTo(width, height);
+                log("PiPリサイズ実行(遅延)");
+            } catch (e) {
+                console.error("Resize failed:", e);
+                log("PiPリサイズ失敗: " + e);
+            }
+        }, 100);
 
         pipWin.document.body.style.backgroundColor = "#181818";
         pipWin.document.body.style.color = "#e0e0e0";
