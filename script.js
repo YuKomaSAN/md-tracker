@@ -332,7 +332,13 @@ function formatSeconds(sec) { const m = Math.floor(sec / 60); const s = sec % 60
 function toTimeStr(val) { const sec = parseDuration(val); return sec > 0 ? formatSeconds(sec) : "-"; }
 
 function resetSession() { const now = Date.now(); localStorage.setItem('md_session_start', now); sessionStartTime = now; showToast("ここからの成績を集計します"); renderHome(); }
-function saveUrl() { localStorage.setItem('md_tracker_url', document.getElementById('gasUrlInput').value); showToast("保存しました"); loadData(); }
+function saveUrl() {
+    const val = document.getElementById('gasUrlInput').value;
+    localStorage.setItem('md_tracker_url', val);
+    GAS_URL = val;
+    showToast("保存しました");
+    loadData();
+}
 
 function changeTab(id) {
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -351,17 +357,20 @@ function loadData() {
         logData = data.logs || []; deckList = data.decks || [];
         renderSelects(document);
         if (pipWindowRef) renderSelects(pipWindowRef.document);
+
+        // Restore last deck (Moved inside callback to ensure deckList is ready)
+        const last = localStorage.getItem('md_last_deck');
+        const myDeckSel = document.getElementById('myDeckSelect');
+        if (last && deckList.includes(last) && myDeckSel && !myDeckSel.value) {
+            myDeckSel.value = last;
+        }
+
         if (!document.body.classList.contains("compact-mode")) { renderHome(); renderHistory(); applyFilter(); } else { renderHome(); }
         delete window[cbName]; document.body.removeChild(document.getElementById(cbName));
     };
     const script = document.createElement('script');
     script.src = `${GAS_URL}?callback=${cbName}&nocache=${Date.now()}`;
     document.body.appendChild(script);
-    const last = localStorage.getItem('md_last_deck');
-    const myDeckSel = doc.getElementById('myDeckSelect');
-    if (last && deckList.includes(last) && myDeckSel && !myDeckSel.value) {
-        myDeckSel.value = last;
-    }
 }
 
 function renderSelects(doc) {
