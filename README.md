@@ -1,9 +1,23 @@
-# MD Tracker システム仕様書
+# MD Tracker
+
+遊戯王マスターデュエルの対戦結果を自動記録・分析するツール。
+
+## 📖 利用者の方へ (For Users)
+
+このツールを使いたい方は、以下のマニュアルをご覧ください。
+👉 **[利用マニュアル (セットアップ手順)](USER_GUIDE.md)**
+
+アプリはこちらから利用できます:
+👉 **[MD Tracker Web App](https://yukomasan.github.io/md-tracker/)**
+
+---
+
+## 🛠️ 開発者向けドキュメント (System Specifications)
 
 ## 1. プロジェクト概要
 
-**名称:** MD Tracker (Master Duel Tracker)  
-**バージョン:** v4.2 (Current)  
+**名称:** MD Tracker (Master Duel Tracker)
+**バージョン:** v4.2 (Current)
 **目的:** 遊戯王マスターデュエルの対戦画面をブラウザ経由でキャプチャし、OCR（光学文字認識）を用いて「コイントス結果」「手番」「勝敗」「対戦時間」を自動でGoogleスプレッドシートに記録・分析するツール。
 
 ---
