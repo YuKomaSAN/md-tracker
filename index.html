@@ -10,12 +10,11 @@
 
 <body>
 
-    <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-        <h1 style="margin:0; font-size: 1.5em;">MD Tracker v5.0</h1>
-        <div style="font-size: 0.8em;">
-            GAS URL: <input type="text" id="gasUrlInput" placeholder="https://script.google..."
-                style="width: 200px; padding: 5px;">
-            <button id="btnSaveUrl" class="secondary" style="width:auto;">保存</button>
+    <header class="main-header">
+        <h1 class="main-title">MD Tracker v5.0</h1>
+        <div class="header-controls">
+            GAS URL: <input type="text" id="gasUrlInput" placeholder="https://script.google..." class="gas-url-input">
+            <button id="btnSaveUrl" class="secondary btn-auto-width">保存</button>
         </div>
     </header>
 
@@ -28,8 +27,8 @@
 
     <div id="home" class="page active">
         <div class="status-bar">
-            <div style="font-weight:bold; font-size:1.1em;">システム状態</div>
-            <div style="display:flex; gap:10px;">
+            <div class="status-label">システム状態</div>
+            <div class="status-badges">
                 <div class="status-badge" id="stateBadge">待機中</div>
                 <div class="status-badge">コイン: <span id="coinVal">---</span></div>
                 <div class="status-badge">時間: <span id="timeVal">0s</span></div>
@@ -42,9 +41,9 @@
                 <button class="primary" id="btnStartSystem">🚀 監視システム起動</button>
 
                 <div id="portableControls">
-                    <div id="topBtns" style="display:flex; gap:5px; margin-bottom:15px;">
+                    <div id="topBtns" class="top-btns-container">
                         <button id="btnOpenPiP" class="secondary">📱 縦型ミニ窓</button>
-                        <button class="secondary" id="btnResetSession" style="background:#2c3e50;">⏱️
+                        <button class="secondary btn-reset-session" id="btnResetSession">⏱️
                             集計リセット</button>
                     </div>
 
@@ -79,17 +78,16 @@
 
                     <div id="groupManual">
                         <h4>手動操作</h4>
-                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+                        <div class="manual-controls-grid">
                             <button class="secondary" id="btnManualStart">試合開始</button>
                             <button class="secondary" id="btnResetGame">リセット</button>
                             <button class="danger" id="btnForceWin">強制：勝</button>
-                            <button class="danger" style="background:#555;" id="btnForceLose">強制：負</button>
+                            <button class="danger btn-force-lose" id="btnForceLose">強制：負</button>
                         </div>
                     </div>
                 </div>
-                <div id="pipPlaceholder"
-                    style="display:none; text-align:center; padding:20px; border:2px dashed #555; border-radius:8px; margin-top:10px;">
-                    <p style="color:#aaa;">操作パネルはミニ窓で表示中</p>
+                <div id="pipPlaceholder" class="pip-placeholder">
+                    <p class="pip-placeholder-text">操作パネルはミニ窓で表示中</p>
                     <button class="secondary" id="btnClosePiP">📥 ホームに戻す</button>
                 </div>
 
@@ -107,10 +105,10 @@
                     <div class="big-stat-card"><span class="big-stat-lbl">平均時間</span><span class="big-stat-val"
                             id="db_avgTime">--</span></div>
                 </div>
-                <div class="col" style="border:none; background:#252525; padding:0;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                        <h3 style="margin:0; border:none;">🕒 直近10戦</h3>
-                        <button class="secondary" id="btnRefreshRecent" style="width:auto; font-size:0.8em;">更新</button>
+                <div class="col recent-matches-col">
+                    <div class="recent-header">
+                        <h3 class="recent-title">🕒 直近10戦</h3>
+                        <button class="secondary btn-refresh-small" id="btnRefreshRecent">更新</button>
                     </div>
                     <table id="recentTable">
                         <thead>
@@ -132,13 +130,12 @@
 
     <div id="monitor" class="page">
         <div class="container">
-            <div class="col" style="flex: 1.2;">
+            <div class="col monitor-col-main">
                 <h3>映像プレビュー</h3>
                 <div id="videoContainer"><video id="video" autoplay playsinline muted></video>
                     <div id="cropGuide"></div>
                 </div>
-                <div style="margin-top:5px; color:#aaa; font-size:0.8em;">AIの視界</div><canvas
-                    id="displayCanvas"></canvas>
+                <div class="canvas-label">AIの視界</div><canvas id="displayCanvas"></canvas>
             </div>
             <div class="col">
                 <h3>認識ステータス</h3>
@@ -147,12 +144,12 @@
         </div>
     </div>
     <div id="history" class="page">
-        <div style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
-            <h3 style="margin:0; border:none; color:#fff;">最新100件</h3>
-            <div><span id="historyMsg" style="color:#aaa; margin-right:10px;"></span><button class="secondary"
-                    id="btnRefreshHistory" style="width: auto;">🔄 更新</button></div>
+        <div class="history-header">
+            <h3 class="history-title">最新100件</h3>
+            <div><span id="historyMsg" class="history-msg"></span><button class="secondary" id="btnRefreshHistory"
+                    class="btn-auto-width">🔄 更新</button></div>
         </div>
-        <div class="col" style="overflow-x:auto; padding:0;">
+        <div class="col history-table-container">
             <table id="historyTable">
                 <thead>
                     <tr>
@@ -172,7 +169,7 @@
     </div>
     <div id="analyze" class="page">
         <div class="filter-bar">
-            <h3 style="border:none;">📊 詳細分析フィルター</h3>
+            <h3 class="analyze-title">📊 詳細分析フィルター</h3>
             <div class="filter-row">
                 <div class="filter-btn" data-filter="1h">1時間</div>
                 <div class="filter-btn" data-filter="24h">24時間</div>
@@ -180,19 +177,19 @@
                 <div class="filter-btn" data-filter="month">今月</div>
                 <div class="filter-btn active" data-filter="all">全期間</div>
             </div>
-            <div class="filter-row"><label style="margin:0 10px 0 0;">種別:</label><select id="filterMatchType"
-                    style="width:auto; margin:0;">
+            <div class="filter-row"><label class="filter-label">種別:</label><select id="filterMatchType"
+                    class="filter-select">
                     <option value="all">すべて</option>
                     <option value="ランクマッチ">ランクマッチ</option>
                     <option value="レート">レート</option>
                     <option value="DC & WCS">DC & WCS</option>
                     <option value="その他">その他</option>
                 </select></div>
-            <div class="filter-row" style="border-top:1px solid #444; padding-top:10px; margin-top:10px;"><input
-                    type="datetime-local" id="dateStart" style="width:auto;"> ～ <input type="datetime-local"
-                    id="dateEnd" style="width:auto;"><button class="secondary" id="btnApplyCustomFilter"
-                    style="width:auto;">適用</button><button class="secondary" id="btnSaveFilter"
-                    style="width:auto; margin-left:auto;">★ 条件保存</button></div>
+            <div class="filter-row custom-filter-row"><input type="datetime-local" id="dateStart" class="date-input"> ～
+                <input type="datetime-local" id="dateEnd" class="date-input"><button class="secondary btn-auto-width"
+                    id="btnApplyCustomFilter">適用</button><button class="secondary btn-save-filter" id="btnSaveFilter">★
+                    条件保存</button>
+            </div>
             <div id="savedFilters"></div>
         </div>
         <div class="dashboard-stats">
@@ -256,14 +253,212 @@
                 <option value="WIN">WIN</option>
                 <option value="LOSE">LOSE</option>
             </select>
-            <div style="display:flex; gap:10px; margin-top:20px;"><button class="primary"
-                    id="btnSubmitEdit">保存</button><button class="secondary" id="btnCancelEdit">キャンセル</button>
+            <div class="modal-btn-group"><button class="primary" id="btnSubmitEdit">保存</button><button class="secondary"
+                    ``` <label>自分</label><select id="myDeckSelect">
+                        <option value="">読み込み中...</option>
+                    </select>
+            </div>
+            <div class="input-group">
+                <label>相手</label><select id="oppDeckSelect">
+                    <option value="">(不明)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label>手番</label><select id="turnOrder">
+                    <option value="Unknown">自動判定</option>
+                    <option value="先攻">先攻</option>
+                    <option value="後攻">後攻</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="groupManual">
+            <h4>手動操作</h4>
+            <div class="manual-controls-grid">
+                <button class="secondary" id="btnManualStart">試合開始</button>
+                <button class="secondary" id="btnResetGame">リセット</button>
+                <button class="danger" id="btnForceWin">強制：勝</button>
+                <button class="danger btn-force-lose" id="btnForceLose">強制：負</button>
+            </div>
+        </div>
+    </div>
+    <div id="pipPlaceholder" class="pip-placeholder">
+        <p class="pip-placeholder-text">操作パネルはミニ窓で表示中</p>
+        <button class="secondary" id="btnClosePiP">📥 ホームに戻す</button>
+    </div>
+
+    <div id="logs">ログ待機中...</div>
+    </div>
+
+    <div>
+        <div class="dashboard-stats">
+            <div class="big-stat-card"><span class="big-stat-lbl" id="lbl_winRate">勝率 (全期間)</span><span
+                    class="big-stat-val" id="db_winRate" style="color:#4caf50;">--%</span></div>
+            <div class="big-stat-card"><span class="big-stat-lbl">試合数</span><span class="big-stat-val"
+                    id="db_totalMatches">--</span></div>
+            <div class="big-stat-card"><span class="big-stat-lbl">コイン表率</span><span class="big-stat-val"
+                    id="db_coinRate">--%</span></div>
+            <div class="big-stat-card"><span class="big-stat-lbl">平均時間</span><span class="big-stat-val"
+                    id="db_avgTime">--</span></div>
+        </div>
+        <div class="col recent-matches-col">
+            <div class="recent-header">
+                <h3 class="recent-title">🕒 直近10戦</h3>
+                <button class="secondary btn-refresh-small" id="btnRefreshRecent">更新</button>
+            </div>
+            <table id="recentTable">
+                <thead>
+                    <tr>
+                        <th>デッキ</th>
+                        <th>相手</th>
+                        <th>手番</th>
+                        <th>時間</th>
+                        <th>勝敗</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    </div>
+    </div>
+
+    <div id="monitor" class="page">
+        <div class="container">
+            <div class="col monitor-col-main">
+                <h3>映像プレビュー</h3>
+                <div id="videoContainer"><video id="video" autoplay playsinline muted></video>
+                    <div id="cropGuide"></div>
+                </div>
+                <div class="canvas-label">AIの視界</div><canvas id="displayCanvas"></canvas>
+            </div>
+            <div class="col">
+                <h3>認識ステータス</h3>
+                <div id="monitorMode">---</div>
+            </div>
+        </div>
+    </div>
+    <div id="history" class="page">
+        <div class="history-header">
+            <h3 class="history-title">最新100件</h3>
+            <div><span id="historyMsg" class="history-msg"></span><button class="secondary" id="btnRefreshHistory"
+                    class="btn-auto-width">🔄 更新</button></div>
+        </div>
+        <div class="col history-table-container">
+            <table id="historyTable">
+                <thead>
+                    <tr>
+                        <th>日時</th>
+                        <th>種別</th>
+                        <th>デッキ</th>
+                        <th>相手</th>
+                        <th>先後</th>
+                        <th>時間</th>
+                        <th>勝敗</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+    <div id="analyze" class="page">
+        <div class="filter-bar">
+            <h3 class="analyze-title">📊 詳細分析フィルター</h3>
+            <div class="filter-row">
+                <div class="filter-btn" data-filter="1h">1時間</div>
+                <div class="filter-btn" data-filter="24h">24時間</div>
+                <div class="filter-btn" data-filter="week">今週</div>
+                <div class="filter-btn" data-filter="month">今月</div>
+                <div class="filter-btn active" data-filter="all">全期間</div>
+            </div>
+            <div class="filter-row"><label class="filter-label">種別:</label><select id="filterMatchType"
+                    class="filter-select">
+                    <option value="all">すべて</option>
+                    <option value="ランクマッチ">ランクマッチ</option>
+                    <option value="レート">レート</option>
+                    <option value="DC & WCS">DC & WCS</option>
+                    <option value="その他">その他</option>
+                </select></div>
+            <div class="filter-row custom-filter-row"><input type="datetime-local" id="dateStart" class="date-input"> ～
+                <input type="datetime-local" id="dateEnd" class="date-input"><button class="secondary btn-auto-width"
+                    id="btnApplyCustomFilter">適用</button><button class="secondary btn-save-filter" id="btnSaveFilter">★
+                    条件保存</button>
+            </div>
+            <div id="savedFilters"></div>
+        </div>
+        <div class="dashboard-stats">
+            <div class="big-stat-card"><span class="big-stat-val" id="st_total">0</span><span
+                    class="big-stat-lbl">該当試合数</span></div>
+            <div class="big-stat-card"><span class="big-stat-val" id="st_winRate">0%</span><span
+                    class="big-stat-lbl">勝率</span></div>
+            <div class="big-stat-card"><span class="big-stat-val" id="st_coin">0%</span><span
+                    class="big-stat-lbl">コイン表率</span></div>
+            <div class="big-stat-card"><span class="big-stat-val" id="st_avgTime">0:00</span><span
+                    class="big-stat-lbl">平均時間</span></div>
+        </div>
+        <div class="container">
+            <div class="col">
+                <h3>使用デッキ別</h3>
+                <table id="tableMyDeck"></table>
+            </div>
+            <div class="col">
+                <h3>対戦相手別</h3>
+                <table id="tableOppDeck"></table>
+            </div>
+        </div>
+    </div>
+
+    <div id="pipContent" style="display:none;">
+        <div class="pip-left-pane">
+            <div class="mini-status-row">
+                <span id="pip_state" class="mini-badge" style="color:#aaa;">待機中</span>
+                <span id="pip_coin" class="mini-badge">Coin: -</span>
+                <span id="pip_time" class="mini-badge">0s</span>
+            </div>
+            <div class="mini-stats">
+                <div class="mini-stat-box"><span class="mini-val" id="pip_total">0</span><span
+                        class="mini-lbl">試合</span></div>
+                <div class="mini-stat-box"><span class="mini-val" id="pip_win" style="color:#4caf50;">0%</span><span
+                        class="mini-lbl">勝率</span></div>
+                <div class="mini-stat-box"><span class="mini-val" id="pip_coin_r">0%</span><span
+                        class="mini-lbl">表率</span></div>
+            </div>
+        </div>
+
+        <div id="pipControlsTarget"></div>
+
+        <div class="pip-footer-btns" style="margin-top:10px;">
+            <button class="secondary" id="btnToggleLayout">⟲ レイアウト (縦/横)</button>
+        </div>
+    </div>
+
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <h3>記録の編集</h3><input type="hidden" id="editId"><label>種別</label><select id="editMatchType">
+                <option value="ランクマッチ">ランクマッチ</option>
+                <option value="レート">レート</option>
+                <option value="DC & WCS">DC & WCS</option>
+                <option value="その他">その他</option>
+            </select><label>デッキ</label><select id="editMyDeck"></select><label>相手</label><select
+                id="editOppDeck"></select><label>手番</label><select id="editTurn">
+                <option value="先攻">先攻</option>
+                <option value="後攻">後攻</option>
+            </select><label>勝敗</label><select id="editResult">
+                <option value="WIN">WIN</option>
+                <option value="LOSE">LOSE</option>
+            </select>
+            <div class="modal-btn-group"><button class="primary" id="btnSubmitEdit">保存</button><button class="secondary"
+                    id="btnCancelEdit">キャンセル</button>
             </div>
         </div>
     </div>
 
     <div id="toast"></div>
+    <script src="webgl-manager.js"></script>
     <script src="script.js"></script>
 </body>
 
 </html>
+```

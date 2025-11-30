@@ -1,3 +1,27 @@
+const CONFIG = {
+    OCR: {
+        WHITELIST_RESTRICTED: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789勝利敗北',
+        WHITELIST_ALL: ''
+    },
+    TIMEOUTS: {
+        TURN_DETECT: 15000,
+        RESULT_COOLDOWN: 10000,
+        RESIZE_DELAY: 100,
+        LOAD_DELAY: 1500,
+        LOOP_FAST: 50,
+        LOOP_SLOW: 300
+    },
+    PIP: {
+        LANDSCAPE: { WIDTH: 1150, HEIGHT: 170 },
+        PORTRAIT: { WIDTH: 320, HEIGHT: 650 }
+    },
+    ROI: {
+        TURN: { x: 0.30, y: 0.58, w: 0.40, h: 0.12, scale: 1.0 },
+        GAME: { x: 0.15, y: 0.33, w: 0.7, h: 0.34, scale: 1.0 },
+        WAIT: { x: 0.33, y: 0.63, w: 0.33, h: 0.10, scale: 1.0 }
+    }
+};
+
 let GAS_URL = localStorage.getItem('md_tracker_url') || "";
 if (GAS_URL) document.getElementById('gasUrlInput').value = GAS_URL;
 
@@ -11,8 +35,8 @@ let pipWindowRef = null;
 // Turn Detection State
 let isDeterminingTurn = false;
 let turnDetectStartTime = 0;
-const TURN_DETECT_TIMEOUT_MS = 15000;
 let currentOCRMode = "ALL";
+let webglManager = new WebGLManager();
 
 // レイアウト設定
 let pipLayoutMode = localStorage.getItem('md_pip_layout') || 'portrait';
@@ -140,17 +164,14 @@ async function togglePiP() {
     if (pipWindowRef) { pipWindowRef.close(); return; }
 
     try {
-        // 初期サイズ設定 (横長は1150px, 縦長は320px)
-        const width = pipLayoutMode === 'landscape' ? 1150 : 320;
-        const height = pipLayoutMode === 'landscape' ? 170 : 650;
+        // 初期サイズ設定
+        const width = pipLayoutMode === 'landscape' ? CONFIG.PIP.LANDSCAPE.WIDTH : CONFIG.PIP.PORTRAIT.WIDTH;
+        const height = pipLayoutMode === 'landscape' ? CONFIG.PIP.LANDSCAPE.HEIGHT : CONFIG.PIP.PORTRAIT.HEIGHT;
 
         const pipWin = await documentPictureInPicture.requestWindow({ width: width, height: height });
         pipWindowRef = pipWin;
         log("PiPウィンドウ作成成功");
 
-        // requestWindowはInnerサイズを指定するが、resizeToはOuterサイズを指定する。
-        // レイアウト変更時(resizeTo使用)とサイズ感を合わせるため、ここでresizeToを呼ぶ。
-        // 即時実行だと効かない場合があるため、少し遅延させる
         setTimeout(() => {
             try {
                 pipWin.resizeTo(width, height);
@@ -159,7 +180,7 @@ async function togglePiP() {
                 console.error("Resize failed:", e);
                 log("PiPリサイズ失敗: " + e);
             }
-        }, 100);
+        }, CONFIG.TIMEOUTS.RESIZE_DELAY);
 
         pipWin.document.body.style.backgroundColor = "#181818";
         pipWin.document.body.style.color = "#e0e0e0";
@@ -247,7 +268,7 @@ function toggleLayout() {
 
             // 画面からはみ出さないように位置調整 (横幅が増えるため左にずらす)
             const currentX = pipWindowRef.screenX;
-            const targetWidth = 1150;
+            const targetWidth = CONFIG.PIP.LANDSCAPE.WIDTH;
             const screenW = pipWindowRef.screen.availWidth;
 
             if (currentX + targetWidth > screenW) {
@@ -255,7 +276,7 @@ function toggleLayout() {
                 pipWindowRef.moveTo(newX, pipWindowRef.screenY);
             }
 
-            pipWindowRef.resizeTo(1150, 170);
+            pipWindowRef.resizeTo(CONFIG.PIP.LANDSCAPE.WIDTH, CONFIG.PIP.LANDSCAPE.HEIGHT);
             pipWindowRef.document.body.classList.add('landscape');
         } else {
             // → 縦長へ変更 (Portrait)
@@ -263,7 +284,7 @@ function toggleLayout() {
 
             // 画面からはみ出さないように位置調整
             const currentY = pipWindowRef.screenY;
-            const targetHeight = 650;
+            const targetHeight = CONFIG.PIP.PORTRAIT.HEIGHT;
             const screenH = pipWindowRef.screen.availHeight;
 
             if (currentY + targetHeight > screenH) {
@@ -272,7 +293,7 @@ function toggleLayout() {
             }
 
             // 即時リサイズ実行
-            pipWindowRef.resizeTo(320, 650);
+            pipWindowRef.resizeTo(CONFIG.PIP.PORTRAIT.WIDTH, CONFIG.PIP.PORTRAIT.HEIGHT);
             pipWindowRef.document.body.classList.remove('landscape');
         }
         localStorage.setItem('md_pip_layout', pipLayoutMode);
@@ -378,7 +399,6 @@ function renderHome() {
         });
     }
 }
-
 // --- 履歴 ---
 function renderHistory() {
     const tbody = document.querySelector("#historyTable tbody"); tbody.innerHTML = "";
@@ -460,9 +480,9 @@ async function submitEdit() {
     };
     await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
     localStorage.setItem('md_refresh_signal', Date.now());
-    closeModal(); setTimeout(loadData, 1500);
+    closeModal(); setTimeout(loadData, CONFIG.TIMEOUTS.LOAD_DELAY);
 }
-function deleteLog(id) { if (confirm("削除しますか？")) { fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_log', id: id }) }); localStorage.setItem('md_refresh_signal', Date.now()); setTimeout(loadData, 1500); } }
+function deleteLog(id) { if (confirm("削除しますか？")) { fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_log', id: id }) }); localStorage.setItem('md_refresh_signal', Date.now()); setTimeout(loadData, CONFIG.TIMEOUTS.LOAD_DELAY); } }
 
 function saveFilter() {
     const s = document.getElementById('dateStart').value;
@@ -595,8 +615,58 @@ async function startSystem() {
         if (!worker) { worker = await Tesseract.createWorker(); await worker.loadLanguage('eng+jpn'); await worker.initialize('eng+jpn'); log("OCR準備完了", "important"); }
         stream = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: "never" } });
         const video = document.getElementById('video'); video.srcObject = stream;
+
+        // Initialize WebGL
+        const canvas = document.getElementById('displayCanvas');
+        if (!webglManager.init(canvas)) {
+            alert("WebGL initialization failed. Check console.");
+            return;
+        }
+
         video.onloadedmetadata = () => { video.play(); loop(); };
     } catch (e) { document.getElementById('btnStartSystem').disabled = false; }
+}
+
+function determinePhase() {
+    if (isDeterminingTurn) return "TURN";
+    if (isGameActive) return "GAME";
+    return "WAIT";
+}
+
+function updateOverlay(guide, phase) {
+    if (!guide) return;
+    const roi = CONFIG.ROI[phase];
+    guide.style.left = (roi.x * 100) + "%";
+    guide.style.width = (roi.w * 100) + "%";
+    guide.style.top = (roi.y * 100) + "%";
+    guide.style.height = (roi.h * 100) + "%";
+
+    if (phase === "TURN") {
+        guide.style.borderColor = "#ff0";
+        if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "手番判定中 (黄色文字)";
+    } else if (phase === "GAME") {
+        guide.style.borderColor = "#f00";
+        if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "試合中 (中央監視)";
+    } else {
+        guide.style.borderColor = "#0f0";
+        if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "待機中 (下部監視)";
+    }
+}
+
+// applyImageFilter removed (replaced by WebGL)
+
+async function updateOCRMode(phase) {
+    const desiredMode = (phase === "GAME") ? "RESTRICTED" : "ALL";
+    if (currentOCRMode !== desiredMode) {
+        if (desiredMode === "RESTRICTED") {
+            await worker.setParameters({ tessedit_char_whitelist: CONFIG.OCR.WHITELIST_RESTRICTED });
+            log("OCRモード: 限定 (英数字+勝敗)", "raw");
+        } else {
+            await worker.setParameters({ tessedit_char_whitelist: CONFIG.OCR.WHITELIST_ALL });
+            log("OCRモード: 全開放 (日本語含む)", "raw");
+        }
+        currentOCRMode = desiredMode;
+    }
 }
 
 async function loop() {
@@ -605,109 +675,58 @@ async function loop() {
     const video = document.getElementById('video');
     if (video.videoWidth === 0) { requestAnimationFrame(loop); return; }
     isProcessing = true;
+
     try {
-        const canvas = document.getElementById('displayCanvas'); const ctx = canvas.getContext('2d'); const guide = document.getElementById('cropGuide');
-        let cX, cY, cW, cH;
-        let filterType = "standard";
+        const canvas = document.getElementById('displayCanvas');
+        // const ctx = canvas.getContext('2d'); // Removed for WebGL
+        const guide = document.getElementById('cropGuide');
 
-        // Determine Phase
-        let phase = "WAIT";
-        if (isDeterminingTurn) phase = "TURN";
-        else if (isGameActive) phase = "GAME";
+        // 1. Determine Phase
+        const phase = determinePhase();
 
-        // Priority 1: Turn Detection Mode
-        if (phase === "TURN") {
-            // Top 58%, Height 12%, Left 30%, Width 40% (Verified settings)
-            cX = video.videoWidth * 0.30;
-            cW = video.videoWidth * 0.40;
-            cY = video.videoHeight * 0.58;
-            cH = video.videoHeight * 0.12;
-            filterType = "yellow_boost";
-
-            if (guide) {
-                guide.style.left = "30%"; guide.style.width = "40%";
-                guide.style.top = "58%"; guide.style.height = "12%";
-                guide.style.borderColor = "#ff0"; // Yellow guide
-            }
-            if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "手番判定中 (黄色文字)";
-
-            // Timeout Check
-            if (Date.now() - turnDetectStartTime > TURN_DETECT_TIMEOUT_MS) {
-                log("手番判定タイムアウト: 判定モードを終了します", "important");
-                isDeterminingTurn = false;
-                // Game is already active, so just return to normal monitoring
-            }
-        }
-        // Priority 2: Game Active (Normal Monitoring)
-        else if (phase === "GAME") {
-            cX = 0; cW = video.videoWidth; cY = video.videoHeight * 0.33; cH = video.videoHeight * 0.34;
-            filterType = "standard";
-            if (guide) { guide.style.left = "0%"; guide.style.width = "100%"; guide.style.top = "33%"; guide.style.height = "34%"; guide.style.borderColor = "#f00"; }
-            if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "試合中 (中央監視)";
-        }
-        // Priority 3: Waiting (Coin Toss Monitoring)
-        else {
-            cX = video.videoWidth * 0.33; cW = video.videoWidth * 0.33; cY = video.videoHeight * 0.63; cH = video.videoHeight * 0.10;
-            filterType = "standard";
-            if (guide) { guide.style.left = "33%"; guide.style.width = "33%"; guide.style.top = "63%"; guide.style.height = "10%"; guide.style.borderColor = "#0f0"; }
-            if (document.getElementById('monitorMode')) document.getElementById('monitorMode').innerText = "待機中 (下部監視)";
+        // 2. Timeout Check (Specific to TURN phase)
+        if (phase === "TURN" && Date.now() - turnDetectStartTime > CONFIG.TIMEOUTS.TURN_DETECT) {
+            log("手番判定タイムアウト: 判定モードを終了します", "important");
+            isDeterminingTurn = false;
+            // Continue processing this frame as normal (will switch to GAME or WAIT next loop)
         }
 
-        // Canvas Resize (Match crop size for full resolution)
-        const targetW = Math.floor(cW);
-        const targetH = Math.floor(cH);
+        // 3. Update Overlay & UI
+        updateOverlay(guide, phase);
+
+        // 4. Capture & Crop Image
+        const roi = CONFIG.ROI[phase];
+        const cX = video.videoWidth * roi.x;
+        const cY = video.videoHeight * roi.y;
+        const cW = video.videoWidth * roi.w;
+        const cH = video.videoHeight * roi.h;
+
+        const scale = roi.scale || 1.0;
+        const targetW = Math.floor(cW * scale);
+        const targetH = Math.floor(cH * scale);
         if (canvas.width !== targetW || canvas.height !== targetH) {
             canvas.width = targetW; canvas.height = targetH;
         }
 
-        ctx.drawImage(video, cX, cY, cW, cH, 0, 0, canvas.width, canvas.height);
+        // 5. WebGL Processing
+        webglManager.updateTexture(video);
+        webglManager.applyFilter(phase, isGameActive, roi);
 
-        let imgD = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let d = imgD.data;
-
-        if (filterType === "yellow_boost") {
-            // Yellow Boost Filter
-            for (let i = 0; i < d.length; i += 4) {
-                const r = d[i]; const g = d[i + 1]; const b = d[i + 2];
-                const yellowScore = (r + g) / 2 - b;
-                const val = yellowScore > 40 ? 255 : 0;
-                d[i] = d[i + 1] = d[i + 2] = val;
-            }
-        } else {
-            // Standard Filter
-            let th = isGameActive ? 172 : 72; let cont = isGameActive ? 0 : 105;
-            const f = (259 * (cont + 255)) / (255 * (259 - cont));
-            for (let i = 0; i < d.length; i += 4) {
-                let g = (d[i] + d[i + 1] + d[i + 2]) / 3;
-                if (cont !== 0) g = f * (g - 128) + 128;
-                const c = g > th ? 255 : 0;
-                d[i] = d[i + 1] = d[i + 2] = c;
-            }
-        }
-        ctx.putImageData(imgD, 0, 0);
-
-        // Dynamic OCR Mode Switching
-        // Sync with phase: Only restrict in "GAME" phase
-        const desiredMode = (phase === "GAME") ? "RESTRICTED" : "ALL";
-        if (currentOCRMode !== desiredMode) {
-            if (desiredMode === "RESTRICTED") {
-                await worker.setParameters({ tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789勝利敗北' });
-                log("OCRモード: 限定 (英数字+勝敗)", "raw");
-            } else {
-                await worker.setParameters({ tessedit_char_whitelist: '' });
-                log("OCRモード: 全開放 (日本語含む)", "raw");
-            }
-            currentOCRMode = desiredMode;
-        }
-
+        // 6. OCR
+        await updateOCRMode(phase);
         const ret = await worker.recognize(canvas);
         const txt = ret.data.text.replace(/\s+/g, "").toUpperCase();
-        if (txt.length > 1) log("OCR: " + txt, "raw");
-        if (txt.length > 1) analyze(txt);
-    } catch (e) { console.error(e); } finally {
+
+        if (txt.length > 1) {
+            log("OCR: " + txt, "raw");
+            analyze(txt);
+        }
+
+    } catch (e) {
+        console.error(e);
+    } finally {
         isProcessing = false;
-        // Faster loop during turn detection
-        setTimeout(loop, isDeterminingTurn ? 50 : 300);
+        setTimeout(loop, isDeterminingTurn ? CONFIG.TIMEOUTS.LOOP_FAST : CONFIG.TIMEOUTS.LOOP_SLOW);
     }
 }
 
@@ -758,10 +777,14 @@ function analyze(t) {
 
     // 3. Game Active (Result)
     if (isGameActive) {
-        if (Date.now() - lastResultTime < 10000) return;
+        if (Date.now() - lastResultTime < CONFIG.TIMEOUTS.RESULT_COOLDOWN) return;
+        // Garbage filter: Result text should be short (WIN/LOSE/VICTORY).
+        // If text is too long, it's likely noise.
+        if (t.length > 13) return;
+
         if (t.includes("CLOSE")) return;
         if (t.includes("VICTORY") || t.includes("VICTDRY") || t.includes("VICT0RY") || t.includes("VIGTORY") || t.includes("VlCTORY") || t.includes("勝利")) finish("WIN", t);
-        else if (t.includes("LOSE") || t.includes("L0SE") || t.includes("LDSE") || t.includes("DEFEAT") || t.includes("敗北") || t.includes("LOBE")) finish("LOSE", t);
+        else if (/[LI1|][O0DQ][S5$B8][E3F]/.test(t) || t.includes("DEFEAT") || t.includes("敗北")) finish("LOSE", t);
     }
 }
 
