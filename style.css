@@ -905,6 +905,202 @@ body.landscape h4,
 body.landscape #pipPlaceholder {
     display: none !important;
 }
+
+/* =========================================
+   5. Extracted Inline Styles (Refactoring)
+   ========================================= */
+
+/* Header */
+.main-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.main-title {
+    margin: 0;
+    font-size: 1.5em;
+}
+
+.header-controls {
+    font-size: 0.8em;
+}
+
+.gas-url-input {
+    width: 200px;
+    padding: 5px;
+}
+
+.btn-auto-width {
+    width: auto;
+}
+
+/* Status Bar */
+.status-label {
+    font-weight: bold;
+    font-size: 1.1em;
+}
+
+.status-badges {
+    display: flex;
+    gap: 10px;
+}
+
+/* Portable Controls */
+.top-btns-container {
+    display: flex;
+    gap: 5px;
+    margin-bottom: 15px;
+}
+
+.btn-reset-session {
+    background: #2c3e50;
+}
+
+/* Manual Controls */
+.manual-controls-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+}
+
+.btn-force-lose {
+    background: #555;
+}
+
+/* PiP Placeholder */
+.pip-placeholder {
+    display: none;
+    text-align: center;
+    padding: 20px;
+    border: 2px dashed #555;
+    border-radius: 8px;
+    margin-top: 10px;
+}
+
+.pip-placeholder-text {
+    color: #aaa;
+}
+
+/* Recent Matches */
+.recent-matches-col {
+    border: none;
+    background: #252525;
+    padding: 0;
+}
+
+.recent-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.recent-title {
+    margin: 0;
+    border: none;
+}
+
+.btn-refresh-small {
+    width: auto;
+    font-size: 0.8em;
+}
+
+/* Monitor Page */
+.monitor-col-main {
+    flex: 1.2;
+}
+
+.canvas-label {
+    margin-top: 5px;
+    color: #aaa;
+    font-size: 0.8em;
+}
+
+/* History Page */
+.history-header {
+    margin-bottom: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.history-title {
+    margin: 0;
+    border: none;
+    color: #fff;
+}
+
+.history-msg {
+    color: #aaa;
+    margin-right: 10px;
+}
+
+.history-table-container {
+    overflow-x: auto;
+    padding: 0;
+}
+
+/* Analyze Page */
+.analyze-title {
+    border: none;
+}
+
+.filter-label {
+    margin: 0 10px 0 0;
+}
+
+.filter-select {
+    width: auto;
+    margin: 0;
+}
+
+.custom-filter-row {
+    border-top: 1px solid #444;
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+.date-input {
+    width: auto;
+}
+
+.btn-save-filter {
+    width: auto;
+    margin-left: auto;
+}
+
+/* Edit Modal */
+.modal-btn-group {
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 0;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    max-height: none !important;
+    /* 高さ制限解除 */
+}
+
+body.landscape #btnToggleLayout:hover {
+    background: #333;
+    border-color: #666;
+}
+
+body.landscape #btnToggleLayout::before {
+    content: "⟲回転";
+    font-size: 11px;
+    color: #4da3ff;
+    white-space: nowrap;
+    font-weight: bold;
+}
+
+body.landscape h4,
+body.landscape #pipPlaceholder {
+    display: none !important;
+}
+
 /* =========================================
    5. Extracted Inline Styles (Refactoring)
    ========================================= */
@@ -1076,4 +1272,3 @@ body.landscape #pipPlaceholder {
     gap: 10px;
     margin-top: 20px;
 }
-

@@ -54,6 +54,8 @@ window.onload = () => {
 };
 
 function setupEventListeners() {
+    // --- Static Elements (Safe to use addEventListener) ---
+
     // Header
     const btnSaveUrl = document.getElementById('btnSaveUrl');
     if (btnSaveUrl) btnSaveUrl.addEventListener('click', saveUrl);
@@ -68,50 +70,55 @@ function setupEventListeners() {
     const tabAnalyze = document.getElementById('tab_analyze');
     if (tabAnalyze) tabAnalyze.addEventListener('click', () => changeTab('analyze'));
 
-    // Main Controls
+    // Main Controls (Non-portable)
     const btnStartSystem = document.getElementById('btnStartSystem');
     if (btnStartSystem) btnStartSystem.addEventListener('click', startSystem);
 
-    const btnOpenPiP = document.getElementById('btnOpenPiP');
-    if (btnOpenPiP) btnOpenPiP.addEventListener('click', togglePiP);
-
-    const btnResetSession = document.getElementById('btnResetSession');
-    if (btnResetSession) btnResetSession.addEventListener('click', resetSession);
-
-    // PiP Placeholder
+    // PiP Placeholder (Always in main window)
     const btnClosePiP = document.getElementById('btnClosePiP');
     if (btnClosePiP) btnClosePiP.addEventListener('click', closePiP);
 
-    // Recent & History Refresh
+    // Refresh Buttons
     const btnRefreshRecent = document.getElementById('btnRefreshRecent');
     if (btnRefreshRecent) btnRefreshRecent.addEventListener('click', loadData);
-
     const btnRefreshHistory = document.getElementById('btnRefreshHistory');
     if (btnRefreshHistory) btnRefreshHistory.addEventListener('click', loadData);
 
-    // Filter
+    // Filters
     document.querySelectorAll('.filter-btn').forEach(btn => {
         btn.addEventListener('click', (e) => setFilterTime(e.target.dataset.filter));
     });
-
     const filterMatchType = document.getElementById('filterMatchType');
     if (filterMatchType) filterMatchType.addEventListener('change', applyFilter);
-
     const btnApplyCustomFilter = document.getElementById('btnApplyCustomFilter');
     if (btnApplyCustomFilter) btnApplyCustomFilter.addEventListener('click', () => setFilterTime('custom'));
-
     const btnSaveFilter = document.getElementById('btnSaveFilter');
     if (btnSaveFilter) btnSaveFilter.addEventListener('click', saveFilter);
 
     // Edit Modal
     const btnSubmitEdit = document.getElementById('btnSubmitEdit');
     if (btnSubmitEdit) btnSubmitEdit.addEventListener('click', submitEdit);
-
     const btnCancelEdit = document.getElementById('btnCancelEdit');
     if (btnCancelEdit) btnCancelEdit.addEventListener('click', closeModal);
 
-    // Portable Controls (handled separately for PiP support)
+    // --- Portable Controls (Keep using onclick/onchange in setupPortableListeners) ---
+    // These elements move between Main Window and PiP Window.
+    // Using addEventListener causes issues with event loss or duplication during moves.
     setupPortableListeners(document);
+
+    // --- Table Event Delegation ---
+    const handleTableClick = (e) => {
+        const target = e.target;
+        if (target.classList.contains('btn-edit')) {
+            editLog(parseInt(target.dataset.id));
+        } else if (target.classList.contains('btn-delete')) {
+            deleteLog(parseInt(target.dataset.id));
+        }
+    };
+    const recentTable = document.getElementById('recentTable');
+    if (recentTable) recentTable.addEventListener('click', handleTableClick);
+    const historyTable = document.getElementById('historyTable');
+    if (historyTable) historyTable.addEventListener('click', handleTableClick);
 }
 
 function setupPortableListeners(doc) {
@@ -230,6 +237,7 @@ async function togglePiP() {
         }
 
         // イベントリスナー再設定 (PiP内)
+        renderSelects(pipWin.document);
         setupPortableListeners(pipWin.document);
 
         document.getElementById('pipPlaceholder').style.display = "block";
@@ -341,7 +349,8 @@ function loadData() {
     const cbName = 'cb_' + Date.now();
     window[cbName] = (data) => {
         logData = data.logs || []; deckList = data.decks || [];
-        updateSelectors();
+        renderSelects(document);
+        if (pipWindowRef) renderSelects(pipWindowRef.document);
         if (!document.body.classList.contains("compact-mode")) { renderHome(); renderHistory(); applyFilter(); } else { renderHome(); }
         delete window[cbName]; document.body.removeChild(document.getElementById(cbName));
     };
@@ -350,19 +359,34 @@ function loadData() {
     document.body.appendChild(script);
 }
 
-function updateSelectors() {
+function renderSelects(doc) {
+    if (!doc) return;
     const ids = ['myDeckSelect', 'oppDeckSelect', 'editMyDeck', 'editOppDeck'];
     ids.forEach(id => {
-        const el = id.startsWith('edit') ? document.getElementById(id) : getUI(id);
+        const el = doc.getElementById(id);
         if (!el) return;
-        const current = el.value; el.innerHTML = `<option value="">(選択なし)</option>`;
-        deckList.forEach(d => el.innerHTML += `<option value="${d}">${d}</option>`);
-        if (id.includes('Select')) el.innerHTML += `<option value="__NEW__" style="color:#4da3ff;">＋ 新規追加...</option>`;
-        if (current && deckList.includes(current)) el.value = current;
+        const current = el.value;
+
+        let html = `<option value="">(選択なし)</option>`;
+        html += deckList.map(d => `<option value="${d}">${d}</option>`).join('');
+
+        if (id.includes('Select')) {
+            html += `<option value="__NEW__" style="color:#4da3ff;">＋ 新規追加...</option>`;
+        }
+
+        el.innerHTML = html;
+
+        if (current && deckList.includes(current)) {
+            el.value = current;
+        }
     });
+
+    // Restore last deck (only for myDeckSelect)
     const last = localStorage.getItem('md_last_deck');
-    const myDeckSel = getUI('myDeckSelect');
-    if (last && deckList.includes(last) && myDeckSel && !myDeckSel.value) myDeckSel.value = last;
+    const myDeckSel = doc.getElementById('myDeckSelect');
+    if (last && deckList.includes(last) && myDeckSel && !myDeckSel.value) {
+        myDeckSel.value = last;
+    }
 }
 
 // --- ホーム画面 ---
@@ -394,7 +418,7 @@ function renderHome() {
         recent.forEach(row => {
             const tr = document.createElement("tr");
             const res = row.result || "-"; const resClass = res.includes("WIN") ? "win" : "lose"; const timeStr = toTimeStr(row.duration);
-            tr.innerHTML = `<td>${row.myDeck}</td><td>${row.oppDeck || "-"}</td><td>${row.turn}</td><td>${timeStr}</td><td class="${resClass}">${res}</td><td><button onclick="editLog(${row.id})" style="padding:2px 6px; font-size:0.8em;">編集</button> <button onclick="deleteLog(${row.id})" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
+            tr.innerHTML = `<td>${row.myDeck}</td><td>${row.oppDeck || "-"}</td><td>${row.turn}</td><td>${timeStr}</td><td class="${resClass}">${res}</td><td><button class="btn-edit" data-id="${row.id}" style="padding:2px 6px; font-size:0.8em;">編集</button> <button class="btn-delete" data-id="${row.id}" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
             tbody.appendChild(tr);
         });
     }
@@ -406,7 +430,7 @@ function renderHistory() {
         const tr = document.createElement("tr");
         let dateStr = "---"; try { const d = new Date(row.date); if (!isNaN(d.getTime())) dateStr = `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`; } catch (e) { }
         const res = row.result || "-"; const resClass = res.includes("WIN") ? "win" : "lose"; const timeStr = toTimeStr(row.duration);
-        tr.innerHTML = `<td>${dateStr}</td><td>${row.type || "-"}</td><td>${row.myDeck}</td><td>${row.oppDeck || "-"}</td><td>${row.turn}</td><td>${timeStr}</td><td class="${resClass}">${res}</td><td><button onclick="editLog(${row.id})" style="padding:2px 6px; font-size:0.8em;">編集</button> <button onclick="deleteLog(${row.id})" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
+        tr.innerHTML = `<td>${dateStr}</td><td>${row.type || "-"}</td><td>${row.myDeck}</td><td>${row.oppDeck || "-"}</td><td>${row.turn}</td><td>${timeStr}</td><td class="${resClass}">${res}</td><td><button class="btn-edit" data-id="${row.id}" style="padding:2px 6px; font-size:0.8em;">編集</button> <button class="btn-delete" data-id="${row.id}" style="padding:2px 6px; font-size:0.8em; background:#d32f2f;">削除</button></td>`;
         tbody.appendChild(tr);
     });
 }
@@ -453,11 +477,16 @@ function renderStats() {
 }
 
 function renderTable(id, stats) {
-    const t = document.getElementById(id); t.innerHTML = `<tr><th>デッキ</th><th>数</th><th>勝率</th><th>平均時間</th></tr>`;
-    Object.keys(stats).sort((a, b) => stats[b].t - stats[a].t).forEach(k => {
-        const s = stats[k]; const rate = Math.round((s.w / s.t) * 100) + "%"; const avgT = s.timeCnt > 0 ? formatSeconds(Math.floor(s.timeSum / s.timeCnt)) : "-";
-        t.innerHTML += `<tr><td>${k}</td><td>${s.t}</td><td>${rate}</td><td>${avgT}</td></tr>`;
-    });
+    const t = document.getElementById(id);
+    if (!t) return;
+    const header = `<tr><th>デッキ</th><th>数</th><th>勝率</th><th>平均時間</th></tr>`;
+    const rows = Object.keys(stats).sort((a, b) => stats[b].t - stats[a].t).map(k => {
+        const s = stats[k];
+        const rate = Math.round((s.w / s.t) * 100) + "%";
+        const avgT = s.timeCnt > 0 ? formatSeconds(Math.floor(s.timeSum / s.timeCnt)) : "-";
+        return `<tr><td>${k}</td><td>${s.t}</td><td>${rate}</td><td>${avgT}</td></tr>`;
+    }).join('');
+    t.innerHTML = header + rows;
 }
 
 let editingRowId = null;
@@ -714,7 +743,7 @@ async function loop() {
 
         // 6. OCR
         await updateOCRMode(phase);
-        const ret = await worker.recognize(canvas);
+        const ret = await worker.recognize(webglManager.getCanvas());
         const txt = ret.data.text.replace(/\s+/g, "").toUpperCase();
 
         if (txt.length > 1) {

@@ -201,4 +201,8 @@ class WebGLManager {
         // Draw
         this.gl.drawArrays(this.gl.TRIANGLES, 0, 6);
     }
+
+    getCanvas() {
+        return this.canvas;
+    }
 }
