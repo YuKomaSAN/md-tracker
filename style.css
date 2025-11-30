@@ -159,7 +159,7 @@ button.danger {
 /* --- 統計・テーブルなど --- */
 .dashboard-stats {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 15px;
     margin-bottom: 20px;
 }

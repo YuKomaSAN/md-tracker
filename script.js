@@ -17,7 +17,7 @@ const CONFIG = {
     },
     ROI: {
         TURN: { x: 0.30, y: 0.58, w: 0.40, h: 0.12, scale: 1.0 },
-        GAME: { x: 0.15, y: 0.33, w: 0.7, h: 0.34, scale: 1.0 },
+        GAME: { x: 0.10, y: 0.33, w: 0.8, h: 0.34, scale: 1.0 },
         WAIT: { x: 0.33, y: 0.63, w: 0.33, h: 0.10, scale: 1.0 }
     }
 };
@@ -345,7 +345,7 @@ function changeTab(id) {
 
 // --- データロード ---
 function loadData() {
-    if (!GAS_URL) return;
+    if (!GAS_URL) { showToast("GAS URLが設定されていません"); return; }
     const cbName = 'cb_' + Date.now();
     window[cbName] = (data) => {
         logData = data.logs || []; deckList = data.decks || [];
@@ -357,26 +357,50 @@ function loadData() {
     const script = document.createElement('script');
     script.src = `${GAS_URL}?callback=${cbName}&nocache=${Date.now()}`;
     document.body.appendChild(script);
+    const last = localStorage.getItem('md_last_deck');
+    const myDeckSel = doc.getElementById('myDeckSelect');
+    if (last && deckList.includes(last) && myDeckSel && !myDeckSel.value) {
+        myDeckSel.value = last;
+    }
 }
 
 function renderSelects(doc) {
     if (!doc) return;
-    const ids = ['myDeckSelect', 'oppDeckSelect', 'editMyDeck', 'editOppDeck'];
+    const ids = ['myDeckSelect', 'oppDeckSelect', 'editMyDeck', 'editOppDeck', 'filterMyDeck', 'filterOppDeck'];
+
+    // Extract unique decks from logs for filters
+    const uniqueMyDecks = [...new Set(logData.map(d => d.myDeck).filter(d => d))].sort();
+    const uniqueOppDecks = [...new Set(logData.map(d => d.oppDeck).filter(d => d))].sort();
+
     ids.forEach(id => {
         const el = doc.getElementById(id);
         if (!el) return;
         const current = el.value;
 
-        let html = `<option value="">(選択なし)</option>`;
-        html += deckList.map(d => `<option value="${d}">${d}</option>`).join('');
+        let html = "";
+        let listToUse = deckList;
 
-        if (id.includes('Select')) {
+        if (id.startsWith('filter')) {
+            html = `<option value="all">すべて</option>`;
+            if (id === 'filterMyDeck') listToUse = uniqueMyDecks;
+            if (id === 'filterOppDeck') listToUse = uniqueOppDecks;
+        } else {
+            html = `<option value="">(選択なし)</option>`;
+        }
+
+        html += listToUse.map(d => `<option value="${d}">${d}</option>`).join('');
+
+        if (!id.startsWith('filter')) {
+            html += `<option value="その他">その他</option>`;
+        }
+
+        if (id.includes('Select') && !id.startsWith('filter')) {
             html += `<option value="__NEW__" style="color:#4da3ff;">＋ 新規追加...</option>`;
         }
 
         el.innerHTML = html;
 
-        if (current && deckList.includes(current)) {
+        if (current && (listToUse.includes(current) || current === 'all' || current === 'その他')) {
             el.value = current;
         }
     });
@@ -397,9 +421,26 @@ function renderHome() {
 
     const total = sessionData.length;
     let wins = 0, coins = 0, totalSec = 0, countSec = 0;
+    let firstTurnCount = 0, firstTurnWins = 0, secondTurnCount = 0, secondTurnWins = 0;
+
     if (total > 0) {
         sessionData.forEach(d => {
-            const r = d.result || ""; if (r.includes("WIN")) wins++; if ((d.coin || "").includes("表")) coins++;
+            const r = d.result || "";
+            const isWin = r.includes("WIN");
+            if (isWin) wins++;
+            if ((d.coin || "").includes("表")) coins++;
+
+            const isFirst = (d.turn || "").includes("先") || (d.turn || "") === "First";
+            const isSecond = (d.turn || "").includes("後") || (d.turn || "") === "Second";
+
+            if (isFirst) {
+                firstTurnCount++;
+                if (isWin) firstTurnWins++;
+            } else if (isSecond) {
+                secondTurnCount++;
+                if (isWin) secondTurnWins++;
+            }
+
             const sec = parseDuration(d.duration); if (sec > 0) { totalSec += sec; countSec++; }
         });
     }
@@ -407,7 +448,22 @@ function renderHome() {
     const coinRate = total > 0 ? Math.round((coins / total) * 100) + "%" : "--%";
     const avgTime = countSec > 0 ? formatSeconds(Math.floor(totalSec / countSec)) : "-";
 
-    if (document.getElementById('db_winRate')) { document.getElementById('db_winRate').innerText = winRate; document.getElementById('db_totalMatches').innerText = total + "戦"; document.getElementById('db_coinRate').innerText = coinRate; document.getElementById('db_avgTime').innerText = avgTime; }
+    const firstTurnRate = total > 0 ? Math.round((firstTurnCount / total) * 100) + "%" : "--%";
+    const firstWinRate = firstTurnCount > 0 ? Math.round((firstTurnWins / firstTurnCount) * 100) + "%" : "--%";
+    const secondWinRate = secondTurnCount > 0 ? Math.round((secondTurnWins / secondTurnCount) * 100) + "%" : "--%";
+
+    if (document.getElementById('db_winRate')) {
+        document.getElementById('db_winRate').innerText = winRate;
+        document.getElementById('db_totalMatches').innerText = total + "戦";
+        document.getElementById('db_coinRate').innerText = coinRate;
+        document.getElementById('db_avgTime').innerText = avgTime;
+
+        if (document.getElementById('db_firstTurnRate')) document.getElementById('db_firstTurnRate').innerText = firstTurnRate;
+        if (document.getElementById('db_firstWinRate')) document.getElementById('db_firstWinRate').innerText = firstWinRate;
+        if (document.getElementById('db_secondWinRate')) document.getElementById('db_secondWinRate').innerText = secondWinRate;
+        if (document.getElementById('db_firstMatches')) document.getElementById('db_firstMatches').innerText = firstTurnCount + "戦";
+        if (document.getElementById('db_secondMatches')) document.getElementById('db_secondMatches').innerText = secondTurnCount + "戦";
+    }
 
     const pipT = getUI('pip_total');
     if (pipT) { pipT.innerText = total; getUI('pip_win').innerText = winRate; getUI('pip_coin_r').innerText = coinRate; }
@@ -446,10 +502,42 @@ function setFilterTime(type) {
     applyFilter();
 }
 
+// Add event listeners for new filters
+document.addEventListener('DOMContentLoaded', () => {
+    ['filterMatchType', 'filterMyDeck', 'filterOppDeck', 'filterCoin', 'filterTurn'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('change', applyFilter);
+    });
+});
+
 function applyFilter() {
-    const now = new Date(); const matchType = document.getElementById('filterMatchType').value;
+    const now = new Date();
+    const matchType = document.getElementById('filterMatchType').value;
+    const myDeck = document.getElementById('filterMyDeck') ? document.getElementById('filterMyDeck').value : 'all';
+    const oppDeck = document.getElementById('filterOppDeck') ? document.getElementById('filterOppDeck').value : 'all';
+    const coin = document.getElementById('filterCoin') ? document.getElementById('filterCoin').value : 'all';
+    const turn = document.getElementById('filterTurn') ? document.getElementById('filterTurn').value : 'all';
+
+    console.log("applyFilter called.", { matchType, myDeck, oppDeck, coin, turn, timeFilter: currentTimeFilter });
+
     filteredData = logData.filter(row => {
         if (matchType !== 'all' && row.type !== matchType) return false;
+        if (myDeck !== 'all' && row.myDeck !== myDeck) return false;
+        if (oppDeck !== 'all' && row.oppDeck !== oppDeck) return false;
+
+        if (coin !== 'all') {
+            if (coin === '表' && !(row.coin || "").includes("表")) return false;
+            if (coin === '裏' && !(row.coin || "").includes("裏")) return false;
+        }
+
+        if (turn !== 'all') {
+            const isFirst = (row.turn || "").includes("先") || (row.turn || "") === "First";
+            const isSecond = (row.turn || "").includes("後") || (row.turn || "") === "Second";
+            if (turn === '先攻' && !isFirst) return false;
+            if (turn === '後攻' && !isSecond) return false;
+        }
+
+        if (currentTimeFilter === 'all') return true;
         const d = new Date(row.date); if (isNaN(d.getTime())) return false;
         const diffMs = now - d;
         if (currentTimeFilter === '1h') return diffMs <= 3600000;
@@ -463,33 +551,87 @@ function applyFilter() {
 }
 
 function renderStats() {
+    console.log("renderStats called. filteredData:", filteredData.length);
     const total = filteredData.length;
-    if (total === 0) { document.getElementById('st_total').innerText = "0"; document.getElementById('st_winRate').innerText = "0%"; document.getElementById('st_avgTime').innerText = "-"; document.getElementById('tableMyDeck').innerHTML = ""; document.getElementById('tableOppDeck').innerHTML = ""; return; }
-    let wins = 0, coins = 0, totalSec = 0, countSec = 0; const myStats = {}, oppStats = {};
+    // if (total === 0) block removed to ensure tables are always rendered with headers
+    let wins = 0, coins = 0, totalSec = 0, countSec = 0;
+    let firstTurnCount = 0, firstTurnWins = 0, secondTurnCount = 0, secondTurnWins = 0;
+    const myStats = {}, oppStats = {};
+
     filteredData.forEach(d => {
-        const isWin = (d.result || "").includes("WIN"); if (isWin) wins++; if ((d.coin || "").includes("表")) coins++;
+        const isWin = (d.result || "").includes("WIN");
+        if (isWin) wins++;
+        if ((d.coin || "").includes("表")) coins++;
+
+        const isFirst = (d.turn || "").includes("先") || (d.turn || "") === "First";
+        const isSecond = (d.turn || "").includes("後") || (d.turn || "") === "Second";
+
+        if (isFirst) {
+            firstTurnCount++;
+            if (isWin) firstTurnWins++;
+        } else if (isSecond) {
+            secondTurnCount++;
+            if (isWin) secondTurnWins++;
+        }
+
         const sec = parseDuration(d.duration); if (sec > 0) { totalSec += sec; countSec++; }
-        const updateStat = (obj, key, win, time) => { if (!obj[key]) obj[key] = { t: 0, w: 0, timeSum: 0, timeCnt: 0 }; obj[key].t++; if (win) obj[key].w++; if (time > 0) { obj[key].timeSum += time; obj[key].timeCnt++; } };
-        updateStat(myStats, d.myDeck || "未設定", isWin, sec); updateStat(oppStats, d.oppDeck || "不明", isWin, sec);
+
+        const updateStat = (obj, key, win, time, isFirst, isSecond) => {
+            if (!obj[key]) obj[key] = { t: 0, w: 0, timeSum: 0, timeCnt: 0, fT: 0, fW: 0, sT: 0, sW: 0 };
+            obj[key].t++;
+            if (win) obj[key].w++;
+            if (time > 0) { obj[key].timeSum += time; obj[key].timeCnt++; }
+            if (isFirst) {
+                obj[key].fT++;
+                if (win) obj[key].fW++;
+            }
+            if (isSecond) {
+                obj[key].sT++;
+                if (win) obj[key].sW++;
+            }
+        };
+        updateStat(myStats, d.myDeck || "未設定", isWin, sec, isFirst, isSecond);
+        updateStat(oppStats, d.oppDeck || "不明", isWin, sec, isFirst, isSecond);
     });
-    document.getElementById('st_total').innerText = total; document.getElementById('st_winRate').innerText = Math.round((wins / total) * 100) + "%"; document.getElementById('st_coin').innerText = Math.round((coins / total) * 100) + "%"; document.getElementById('st_avgTime').innerText = countSec > 0 ? formatSeconds(Math.floor(totalSec / countSec)) : "-";
+
+    const firstTurnRate = total > 0 ? Math.round((firstTurnCount / total) * 100) + "%" : "--%";
+    const firstWinRate = firstTurnCount > 0 ? Math.round((firstTurnWins / firstTurnCount) * 100) + "%" : "--%";
+    const secondWinRate = secondTurnCount > 0 ? Math.round((secondTurnWins / secondTurnCount) * 100) + "%" : "--%";
+
+    document.getElementById('st_total').innerText = total;
+    document.getElementById('st_winRate').innerText = Math.round((wins / total) * 100) + "%";
+    document.getElementById('st_coin').innerText = Math.round((coins / total) * 100) + "%";
+    document.getElementById('st_avgTime').innerText = countSec > 0 ? formatSeconds(Math.floor(totalSec / countSec)) : "-";
+
+    if (document.getElementById('st_firstTurnRate')) document.getElementById('st_firstTurnRate').innerText = firstTurnRate;
+    if (document.getElementById('st_firstWinRate')) document.getElementById('st_firstWinRate').innerText = firstWinRate;
+    if (document.getElementById('st_secondWinRate')) document.getElementById('st_secondWinRate').innerText = secondWinRate;
+    if (document.getElementById('st_firstMatches')) document.getElementById('st_firstMatches').innerText = firstTurnCount + "戦";
+    if (document.getElementById('st_secondMatches')) document.getElementById('st_secondMatches').innerText = secondTurnCount + "戦";
     renderTable('tableMyDeck', myStats); renderTable('tableOppDeck', oppStats);
 }
 
 function renderTable(id, stats) {
     const t = document.getElementById(id);
     if (!t) return;
-    const header = `<tr><th>デッキ</th><th>数</th><th>勝率</th><th>平均時間</th></tr>`;
+    const header = `<tr><th>デッキ</th><th>数</th><th>勝率</th><th>先攻率</th><th>平均時間</th></tr>`;
     const rows = Object.keys(stats).sort((a, b) => stats[b].t - stats[a].t).map(k => {
         const s = stats[k];
         const rate = Math.round((s.w / s.t) * 100) + "%";
         const avgT = s.timeCnt > 0 ? formatSeconds(Math.floor(s.timeSum / s.timeCnt)) : "-";
-        return `<tr><td>${k}</td><td>${s.t}</td><td>${rate}</td><td>${avgT}</td></tr>`;
+        const fRate = s.t > 0 ? Math.round((s.fT / s.t) * 100) + "%" : "-";
+        const fWin = s.fT > 0 ? Math.round((s.fW / s.fT) * 100) + "%" : "-";
+        const sWin = s.sT > 0 ? Math.round((s.sW / s.sT) * 100) + "%" : "-";
+
+        const winRateDisplay = `
+            <div>${rate}</div>
+            <div style="font-size:0.8em; color:#aaa;">先:${fWin} / 後:${sWin}</div>
+        `;
+
+        return `<tr><td>${k}</td><td>${s.t}</td><td>${winRateDisplay}</td><td>${fRate}</td><td>${avgT}</td></tr>`;
     }).join('');
     t.innerHTML = header + rows;
 }
-
-let editingRowId = null;
 function editLog(id) {
     const row = logData.find(r => r.id === id); if (!row) return;
     editingRowId = id;

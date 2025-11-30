@@ -96,14 +96,26 @@
 
             <div>
                 <div class="dashboard-stats">
-                    <div class="big-stat-card"><span class="big-stat-lbl" id="lbl_winRate">勝率 (全期間)</span><span
-                            class="big-stat-val" id="db_winRate" style="color:#4caf50;">--%</span></div>
-                    <div class="big-stat-card"><span class="big-stat-lbl">試合数</span><span class="big-stat-val"
-                            id="db_totalMatches">--</span></div>
+                    <div class="big-stat-card">
+                        <span class="big-stat-lbl" id="lbl_winRate">勝率 (全期間)</span>
+                        <span class="big-stat-val" id="db_winRate" style="color:#4caf50;">--%</span>
+                        <div style="font-size:0.8rem; color:#aaa; margin-top:4px;">
+                            先: <span id="db_firstWinRate">--%</span> / 後: <span id="db_secondWinRate">--%</span>
+                        </div>
+                    </div>
+                    <div class="big-stat-card">
+                        <span class="big-stat-lbl">試合数</span>
+                        <span class="big-stat-val" id="db_totalMatches">--</span>
+                        <div style="font-size:0.8rem; color:#aaa; margin-top:4px;">
+                            先: <span id="db_firstMatches">--</span> / 後: <span id="db_secondMatches">--</span>
+                        </div>
+                    </div>
                     <div class="big-stat-card"><span class="big-stat-lbl">コイン表率</span><span class="big-stat-val"
                             id="db_coinRate">--%</span></div>
                     <div class="big-stat-card"><span class="big-stat-lbl">平均時間</span><span class="big-stat-val"
                             id="db_avgTime">--</span></div>
+                    <div class="big-stat-card"><span class="big-stat-lbl">先攻率</span><span class="big-stat-val"
+                            id="db_firstTurnRate">--%</span></div>
                 </div>
                 <div class="col recent-matches-col">
                     <div class="recent-header">
@@ -185,6 +197,26 @@
                     <option value="DC & WCS">DC & WCS</option>
                     <option value="その他">その他</option>
                 </select></div>
+            <div class="filter-row">
+                <label class="filter-label">使用デッキ:</label><select id="filterMyDeck" class="filter-select">
+                    <option value="all">すべて</option>
+                </select>
+                <label class="filter-label">相手デッキ:</label><select id="filterOppDeck" class="filter-select">
+                    <option value="all">すべて</option>
+                </select>
+            </div>
+            <div class="filter-row">
+                <label class="filter-label">コイン:</label><select id="filterCoin" class="filter-select">
+                    <option value="all">すべて</option>
+                    <option value="表">表</option>
+                    <option value="裏">裏</option>
+                </select>
+                <label class="filter-label">手番:</label><select id="filterTurn" class="filter-select">
+                    <option value="all">すべて</option>
+                    <option value="先攻">先攻</option>
+                    <option value="後攻">後攻</option>
+                </select>
+            </div>
             <div class="filter-row custom-filter-row"><input type="datetime-local" id="dateStart" class="date-input"> ～
                 <input type="datetime-local" id="dateEnd" class="date-input"><button class="secondary btn-auto-width"
                     id="btnApplyCustomFilter">適用</button><button class="secondary btn-save-filter" id="btnSaveFilter">★
@@ -193,14 +225,26 @@
             <div id="savedFilters"></div>
         </div>
         <div class="dashboard-stats">
-            <div class="big-stat-card"><span class="big-stat-val" id="st_total">0</span><span
-                    class="big-stat-lbl">該当試合数</span></div>
-            <div class="big-stat-card"><span class="big-stat-val" id="st_winRate">0%</span><span
-                    class="big-stat-lbl">勝率</span></div>
+            <div class="big-stat-card">
+                <span class="big-stat-val" id="st_total">0</span>
+                <span class="big-stat-lbl">該当試合数</span>
+                <div style="font-size:0.8rem; color:#aaa; margin-top:4px;">
+                    先: <span id="st_firstMatches">0</span> / 後: <span id="st_secondMatches">0</span>
+                </div>
+            </div>
+            <div class="big-stat-card">
+                <span class="big-stat-val" id="st_winRate">0%</span>
+                <span class="big-stat-lbl">勝率</span>
+                <div style="font-size:0.8rem; color:#aaa; margin-top:4px;">
+                    先: <span id="st_firstWinRate">0%</span> / 後: <span id="st_secondWinRate">0%</span>
+                </div>
+            </div>
             <div class="big-stat-card"><span class="big-stat-val" id="st_coin">0%</span><span
                     class="big-stat-lbl">コイン表率</span></div>
             <div class="big-stat-card"><span class="big-stat-val" id="st_avgTime">0:00</span><span
                     class="big-stat-lbl">平均時間</span></div>
+            <div class="big-stat-card"><span class="big-stat-val" id="st_firstTurnRate">0%</span><span
+                    class="big-stat-lbl">先攻率</span></div>
         </div>
         <div class="container">
             <div class="col">
