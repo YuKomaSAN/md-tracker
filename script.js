@@ -101,6 +101,11 @@ function setupEventListeners() {
     const btnCancelEdit = document.getElementById('btnCancelEdit');
     if (btnCancelEdit) btnCancelEdit.addEventListener('click', closeModal);
 
+    const editMyDeck = document.getElementById('editMyDeck');
+    if (editMyDeck) editMyDeck.addEventListener('change', (e) => checkNewDeck(e.target));
+    const editOppDeck = document.getElementById('editOppDeck');
+    if (editOppDeck) editOppDeck.addEventListener('change', (e) => checkNewDeck(e.target));
+
     // --- Portable Controls (Keep using onclick/onchange in setupPortableListeners) ---
     // These elements move between Main Window and PiP Window.
     // Using addEventListener causes issues with event loss or duplication during moves.
@@ -403,7 +408,7 @@ function renderSelects(doc) {
             html += `<option value="その他">その他</option>`;
         }
 
-        if (id.includes('Select') && !id.startsWith('filter')) {
+        if (!id.startsWith('filter')) {
             html += `<option value="__NEW__" style="color:#4da3ff;">＋ 新規追加...</option>`;
         }
 
