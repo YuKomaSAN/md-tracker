@@ -36,29 +36,48 @@ function closeModal() {
 
 async function submitEdit() {
     const row = logData.find(r => r.id === editingRowId);
+    // Construct the updated row object (Optimistic)
+    const updatedData = {
+        myDeck: document.getElementById('editMyDeck').value,
+        oppDeck: document.getElementById('editOppDeck').value,
+        turn: document.getElementById('editTurn').value,
+        result: document.getElementById('editResult').value,
+        type: document.getElementById('editMatchType').value
+    };
+
+    // 1. Update UI Immediately
+    optimisticUpdate(editingRowId, updatedData);
+    showToast("保存しました (同期中...)");
+    closeModal();
+
+    // 2. Send to Backend (Background)
     const payload = {
         action: 'update_log',
         id: editingRowId,
         startTime: row.date,
         endTime: row.date,
         duration: row.duration || 0,
-        myDeck: document.getElementById('editMyDeck').value,
-        oppDeck: document.getElementById('editOppDeck').value,
         coinToss: row.coin,
-        turn: document.getElementById('editTurn').value,
-        result: document.getElementById('editResult').value,
-        matchType: document.getElementById('editMatchType').value
+        matchType: updatedData.type, // Map 'type' to 'matchType' for payload
+        ...updatedData
     };
-    await fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) });
-    localStorage.setItem('md_refresh_signal', Date.now());
-    closeModal();
-    setTimeout(loadData, CONFIG.TIMEOUTS.LOAD_DELAY);
+
+    fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        .catch(e => console.error("Sync failed", e));
+
+    // 3. No Reload - Trust the local state
 }
 
 function deleteLog(id) {
     if (confirm("削除しますか？")) {
-        fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_log', id: id }) });
-        localStorage.setItem('md_refresh_signal', Date.now());
-        setTimeout(loadData, CONFIG.TIMEOUTS.LOAD_DELAY);
+        // 1. Update UI Immediately
+        optimisticDelete(id);
+        showToast("削除しました");
+
+        // 2. Send to Backend
+        fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify({ action: 'delete_log', id: id }) })
+            .catch(e => console.error("Sync failed", e));
+
+        // 3. No Reload
     }
 }

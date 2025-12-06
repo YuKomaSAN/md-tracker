@@ -332,25 +332,50 @@ function finish(r, w) {
     const oppD = getUI('oppDeckSelect') ? getUI('oppDeckSelect').value : "";
     const turn = getUI('turnOrder') ? getUI('turnOrder').value : "";
     const type = getUI('matchType') ? getUI('matchType').value : "";
+    const coin = currentCoin; // Capture currentCoin before reset
 
-    const p = {
-        action: 'record',
+    // 1. Construct new row for local update
+    // Use ISO string or similar consistent format if possible, but existing code uses toLocaleString('ja-JP')
+    const nowStr = new Date(lastResultTime).toLocaleString('ja-JP');
+
+    const newRow = {
+        action: 'record', // Technically not part of row data but harmless
         startTime: new Date(gameStartTime).toLocaleString('ja-JP'),
-        endTime: new Date(lastResultTime).toLocaleString('ja-JP'),
+        endTime: nowStr,
+        date: new Date(gameStartTime).toISOString(), // Used for sorting in renderHome
         duration: sec,
         myDeck: myD,
         oppDeck: oppD,
-        coinToss: currentCoin,
+        coin: coin, // Note: payload uses 'coinToss', local uses 'coin' (mapped in utils.js/gas) - wait, gas uses 'coinToss' in payload but row[4] is 'coin'. utils.js loadData maps row[4] to 'coin'.
+        // Let's use 'coin' for local display consistency.
+        turn: turn,
+        result: r,
+        type: type // Maps to 'matchType' in payload
+    };
+
+    // 2. Update UI Immediately
+    optimisticAdd(newRow);
+    showToast("記録しました (同期中...)");
+    resetGame();
+
+    // 3. Send to Backend (Background)
+    const payload = {
+        action: 'record',
+        startTime: newRow.startTime,
+        endTime: newRow.endTime,
+        duration: sec,
+        myDeck: myD,
+        oppDeck: oppD,
+        coinToss: coin,
         turn: turn,
         result: r,
         matchType: type
     };
-    fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(p) }).then(() => {
-        showToast("記録しました");
-        localStorage.setItem('md_refresh_signal', Date.now());
-        resetGame();
-        setTimeout(loadData, 2000);
-    });
+
+    fetch(GAS_URL, { method: 'POST', mode: 'no-cors', body: JSON.stringify(payload) })
+        .catch(e => console.error("Sync failed", e));
+
+    // 4. No Reload
 }
 
 function setCoin(c, msg) {

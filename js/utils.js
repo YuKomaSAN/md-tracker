@@ -69,8 +69,12 @@ function saveUrl() {
 }
 
 // --- データロード ---
-function loadData() {
+function loadData(isManual = false) {
     if (!GAS_URL) { showToast("GAS URLが設定されていません"); return; }
+
+    // Safety check: Don't overwrite recent local changes with potentially stale server data
+    if (!isManual && (Date.now() - lastLocalUpdateTime < 5000)) return;
+
     const cbName = 'cb_' + Date.now();
     window[cbName] = (data) => {
         logData = data.logs || []; deckList = data.decks || [];
