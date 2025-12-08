@@ -51,11 +51,14 @@ async function submitEdit() {
     closeModal();
 
     // 2. Send to Backend (Background)
+    // Fix: Convert ISO string back to local readable format for Spreadsheet
+    const formattedDate = new Date(row.date).toLocaleString('ja-JP');
+
     const payload = {
         action: 'update_log',
         id: editingRowId,
-        startTime: row.date,
-        endTime: row.date,
+        startTime: formattedDate,
+        endTime: formattedDate,
         duration: row.duration || 0,
         coinToss: row.coin,
         matchType: updatedData.type, // Map 'type' to 'matchType' for payload
